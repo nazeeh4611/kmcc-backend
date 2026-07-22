@@ -7,95 +7,126 @@ import asyncHandler from "../utils/asyncHandler.js";
 import ApiError from "../utils/ApiError.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import paginate from "../utils/paginate.js";
-import generateMembershipId from "../utils/generateMembershipId.js";
 import { uploadBufferToCloudinary, deleteFromCloudinary } from "../config/cloudinary.js";
 import { generateMembershipCardPdf } from "../services/cardService.js";
 import { exportMembersToExcel } from "../services/excelService.js";
 import { sendWelcomeEmail } from "../services/emailService.js";
+import bcrypt from "bcryptjs";
 
 const generateTempPassword = () => Math.random().toString(36).slice(-8);
+const DEFAULT_PASSWORD = "2026";
 
-/* -------------------------------------------------------------------------- */
-/*  PUBLIC: self-registration                                                 */
-/* -------------------------------------------------------------------------- */
+export const publicRegisterMember = async (req, res) => {
+  try {
+    console.log("===== STARTING REGISTRATION =====");
+    console.log("Request body:", JSON.stringify(req.body, null, 2));
+    console.log("File received:", req.file ? "Yes" : "No");
 
-/**
- * POST /api/public/members/register
- * Public membership application form. Creates a Member in "pending" status
- * with no membership dates/password yet — those are assigned when an admin
- * approves the application. Accepts an optional photo (multipart "photo").
- */
-export const publicRegisterMember = asyncHandler(async (req, res) => {
-  const {
-    zone,
-    zoneOther,
-    nativePlace,
-    coordinator,
-    coordinatorOther,
-    workingCountry,
-    mandalamCommittee,
-    fullName,
-    phone,
-    email,
-    birthYear,
-  } = req.body;
+    const {
+      zone,
+      zoneOther,
+      nativePlace,
+      coordinator,
+      coordinatorOther,
+      workingCountry,
+      mandalamCommittee,
+      fullName,
+      fatherName,
+      address,
+      bloodGroup,
+      phone,
+      email,
+      birthYear,
+    } = req.body;
 
-  if (zone) {
-    const zoneExists = await Zone.exists({ _id: zone, isActive: true });
-    if (!zoneExists) throw new ApiError(400, "Selected zone is invalid.");
-  }
-  if (coordinator) {
-    const coordinatorExists = await Coordinator.exists({ _id: coordinator, isActive: true });
-    if (!coordinatorExists) throw new ApiError(400, "Selected coordinator is invalid.");
-  }
+    if (!req.file) {
+      console.log("ERROR: No photo file");
+      return res.status(400).json({ success: false, message: "Photo is required." });
+    }
 
-  const duplicate = await Member.findOne({ phone, membershipStatus: { $ne: "inactive" } });
-  if (duplicate) {
-    throw new ApiError(409, "An application with this mobile number already exists.");
-  }
+    console.log("Checking for duplicate phone...");
+    const duplicate = await Member.findOne({ phone, membershipStatus: { $ne: "inactive" } });
+    if (duplicate) {
+      console.log("ERROR: Duplicate phone found");
+      return res.status(409).json({ 
+        success: false, 
+        message: "An application with this mobile number already exists." 
+      });
+    }
 
-  let photo = {};
-  if (req.file) {
-    const uploadResult = await uploadBufferToCloudinary(req.file.buffer, {
-      folder: "kmcc_panchayath/members",
+    console.log("Uploading to Cloudinary...");
+    let photo;
+    try {
+      const uploadResult = await uploadBufferToCloudinary(req.file.buffer, {
+        folder: "kmcc_panchayath/members",
+      });
+      photo = { url: uploadResult.secure_url, publicId: uploadResult.public_id };
+      console.log("Cloudinary upload successful");
+    } catch (cloudinaryError) {
+      console.error("Cloudinary upload failed:", cloudinaryError);
+      return res.status(500).json({ 
+        success: false, 
+        message: "Photo upload failed", 
+        error: cloudinaryError.message 
+      });
+    }
+
+    console.log("Preparing member data...");
+    const memberData = {
+      zone: zone || null,
+      zoneOther: zoneOther || null,
+      nativePlace,
+      coordinator: coordinator || null,
+      coordinatorOther: coordinatorOther || null,
+      workingCountry,
+      mandalamCommittee: mandalamCommittee || "രൂപീകരിച്ചിട്ടില്ല",
+      fullName,
+      fatherName,
+      address,
+      bloodGroup,
+      phone,
+      email: email || undefined,
+      birthYear: parseInt(birthYear),
+      gender: "male",
+      photo,
+      membershipStatus: "pending",
+    };
+
+    console.log("Creating member in database...");
+    let member;
+    try {
+      member = await Member.create(memberData);
+      console.log("Member created successfully:", member._id);
+    } catch (dbError) {
+      console.error("Database creation failed:", dbError);
+      return res.status(500).json({ 
+        success: false, 
+        message: "Database creation failed", 
+        error: dbError.message 
+      });
+    }
+
+    console.log("===== REGISTRATION SUCCESS =====");
+    return res
+      .status(201)
+      .json(
+        new ApiResponse(
+          201,
+          { applicationId: member._id, membershipId: member.membershipId },
+          "Application submitted successfully. You will be notified once it is reviewed."
+        )
+      );
+  } catch (error) {
+    console.error("===== UNHANDLED ERROR =====");
+    console.error("Error details:", error);
+    return res.status(500).json({ 
+      success: false, 
+      message: "Internal server error", 
+      error: error.message 
     });
-    photo = { url: uploadResult.secure_url, publicId: uploadResult.public_id };
   }
+};
 
-  const member = await Member.create({
-    zone: zone || null,
-    zoneOther: zoneOther || null,
-    nativePlace,
-    coordinator: coordinator || null,
-    coordinatorOther: coordinatorOther || null,
-    workingCountry,
-    mandalamCommittee: mandalamCommittee || undefined,
-    fullName,
-    phone,
-    email: email || undefined,
-    birthYear,
-    gender: "male",
-    photo,
-    cloudinaryImage: photo,
-    membershipStatus: "pending",
-  });
-
-  return res
-    .status(201)
-    .json(
-      new ApiResponse(
-        201,
-        { applicationId: member._id, membershipId: member.membershipId },
-        "Application submitted successfully. You will be notified once it is reviewed."
-      )
-    );
-});
-
-/**
- * GET /api/public/members/verify/:membershipId
- * Lightweight public verification for QR-code scans on the membership card.
- * Returns only non-sensitive fields.
- */
 export const verifyMemberPublic = asyncHandler(async (req, res) => {
   const member = await Member.findOne({ membershipId: req.params.membershipId.toUpperCase() })
     .select("membershipId fullName photo membershipStatus membershipExpiry panchayath")
@@ -108,22 +139,11 @@ export const verifyMemberPublic = asyncHandler(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, { member }, "Membership verified"));
 });
 
-/* -------------------------------------------------------------------------- */
-/*  ADMIN: listing / detail                                                   */
-/* -------------------------------------------------------------------------- */
-
-/**
- * GET /api/members
- * Supports: page, limit, search (name/phone/email/passport), status,
- * district, country, bloodGroup, sortBy, sortOrder.
- */
 export const listMembers = asyncHandler(async (req, res) => {
-  const { page, limit, search, status, district, country, bloodGroup, sortBy, sortOrder } = req.query;
+  const { page, limit, search, status, bloodGroup, sortBy, sortOrder } = req.query;
 
   const filter = {};
   if (status) filter.membershipStatus = status;
-  if (district) filter.district = new RegExp(district, "i");
-  if (country) filter.country = new RegExp(country, "i");
   if (bloodGroup) filter.bloodGroup = bloodGroup;
   if (search) {
     filter.$or = [
@@ -131,8 +151,6 @@ export const listMembers = asyncHandler(async (req, res) => {
       { phone: new RegExp(search, "i") },
       { email: new RegExp(search, "i") },
       { membershipId: new RegExp(search, "i") },
-      { passportNumber: new RegExp(search, "i") },
-      { civilId: new RegExp(search, "i") },
     ];
   }
 
@@ -141,7 +159,7 @@ export const listMembers = asyncHandler(async (req, res) => {
     limit,
     sortBy,
     sortOrder,
-    populate: [{ path: "membershipType", select: "title price duration" }, { path: "zone", select: "name" }],
+    populate: [{ path: "membershipType", select: "title price duration" }],
   });
 
   return res.status(200).json(new ApiResponse(200, result, "Members fetched"));
@@ -158,25 +176,13 @@ export const getPendingMembers = asyncHandler(async (req, res) => {
 
 export const getMemberById = asyncHandler(async (req, res) => {
   const member = await Member.findById(req.params.id)
-    .populate("membershipType", "title price duration")
-    .populate("zone", "name nameEnglish")
-    .populate("coordinator", "name phone");
+    .populate("membershipType", "title price duration");
 
   if (!member) throw new ApiError(404, "Member not found.");
 
   return res.status(200).json(new ApiResponse(200, { member: member.toSafeObject() }, "Member fetched"));
 });
 
-/* -------------------------------------------------------------------------- */
-/*  ADMIN: moderation (approve/reject pending applications)                   */
-/* -------------------------------------------------------------------------- */
-
-/**
- * POST /api/members/:id/approve
- * Converts a pending self-registration into a full member: assigns a real
- * membership ID, a password (auto-generated unless provided), and
- * membership start/expiry dates derived from the selected plan.
- */
 export const approveMember = asyncHandler(async (req, res) => {
   const { membershipType, membershipStart, password, committeeRole, unit } = req.body;
 
@@ -195,7 +201,6 @@ export const approveMember = asyncHandler(async (req, res) => {
 
   const plainPassword = password || generateTempPassword();
 
-  member.membershipId = await generateMembershipId();
   member.password = plainPassword;
   member.membershipType = plan._id;
   member.membershipStart = start;
@@ -238,16 +243,12 @@ export const rejectMember = asyncHandler(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, null, "Application rejected and removed"));
 });
 
-/* -------------------------------------------------------------------------- */
-/*  ADMIN: direct CRUD                                                        */
-/* -------------------------------------------------------------------------- */
-
-/**
- * POST /api/members
- * Admin-created member, active immediately (bypasses the pending flow).
- */
 export const createMember = asyncHandler(async (req, res) => {
   const body = req.body;
+
+  if (!req.file) {
+    throw new ApiError(400, "Photo is required.");
+  }
 
   const plan = await MembershipPlan.findById(body.membershipType);
   if (!plan || !plan.isActive) throw new ApiError(400, "Selected membership plan is invalid.");
@@ -256,27 +257,21 @@ export const createMember = asyncHandler(async (req, res) => {
   const expiry = new Date(start);
   expiry.setMonth(expiry.getMonth() + plan.duration);
 
-  let photo = {};
-  if (req.file) {
-    const uploadResult = await uploadBufferToCloudinary(req.file.buffer, {
-      folder: "kmcc_panchayath/members",
-    });
-    photo = { url: uploadResult.secure_url, publicId: uploadResult.public_id };
-  }
+  const uploadResult = await uploadBufferToCloudinary(req.file.buffer, {
+    folder: "kmcc_panchayath/members",
+  });
+  const photo = { url: uploadResult.secure_url, publicId: uploadResult.public_id };
 
   const plainPassword = body.password || generateTempPassword();
-  const membershipId = await generateMembershipId();
 
   const member = await Member.create({
     ...body,
-    membershipId,
     password: plainPassword,
     membershipType: plan._id,
     membershipStart: start,
     membershipExpiry: expiry,
     membershipStatus: "active",
     photo,
-    cloudinaryImage: photo,
     createdBy: req.user.id,
     updatedBy: req.user.id,
   });
@@ -315,10 +310,9 @@ export const updateMember = asyncHandler(async (req, res) => {
       folder: "kmcc_panchayath/members",
     });
     body.photo = { url: uploadResult.secure_url, publicId: uploadResult.public_id };
-    body.cloudinaryImage = body.photo;
   }
 
-  delete body.password; // password changes go through resetMemberPassword
+  delete body.password;
   Object.assign(member, body, { updatedBy: req.user.id });
 
   await member.save();
@@ -352,10 +346,6 @@ export const bulkDeleteMembers = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, { deletedCount: result.deletedCount }, "Members deleted"));
 });
 
-/* -------------------------------------------------------------------------- */
-/*  ADMIN: lifecycle actions                                                  */
-/* -------------------------------------------------------------------------- */
-
 export const suspendMember = asyncHandler(async (req, res) => {
   const member = await Member.findById(req.params.id);
   if (!member) throw new ApiError(404, "Member not found.");
@@ -382,13 +372,6 @@ export const reactivateMember = asyncHandler(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, { member: member.toSafeObject() }, "Member reactivated"));
 });
 
-/**
- * POST /api/members/:id/renew
- * Renews an expired/active membership under a (possibly new) plan.
- * If the member had been permanently deactivated ("inactive"), the old
- * membership period is archived into membershipHistory and a fresh cycle
- * begins, per the spec's renewal rules.
- */
 export const renewMembership = asyncHandler(async (req, res) => {
   const { membershipType, membershipStart } = req.body;
 
@@ -424,12 +407,6 @@ export const renewMembership = asyncHandler(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, { member: member.toSafeObject() }, "Membership renewed"));
 });
 
-/**
- * POST /api/members/:id/transfer
- * Transfers a membership slot to a new person (e.g. family succession)
- * while keeping the same membershipId and membership period. Old holder's
- * details are archived in membershipHistory as a note.
- */
 export const transferMembership = asyncHandler(async (req, res) => {
   const { newFullName, newPhone, newEmail, relation } = req.body;
 
@@ -473,10 +450,6 @@ export const resetMemberPassword = asyncHandler(async (req, res) => {
   );
 });
 
-/* -------------------------------------------------------------------------- */
-/*  ADMIN: membership card, export/import                                     */
-/* -------------------------------------------------------------------------- */
-
 export const generateMemberCard = asyncHandler(async (req, res) => {
   const member = await Member.findById(req.params.id).populate("membershipType", "title");
   if (!member) throw new ApiError(404, "Member not found.");
@@ -510,10 +483,6 @@ export const exportMembers = asyncHandler(async (req, res) => {
 
   return res.status(200).send(buffer);
 });
-
-/* -------------------------------------------------------------------------- */
-/*  ADMIN: dashboard overview stats (feeds the analytics dashboard)           */
-/* -------------------------------------------------------------------------- */
 
 export const getMemberStats = asyncHandler(async (req, res) => {
   const now = new Date();

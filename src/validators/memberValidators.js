@@ -2,21 +2,19 @@ import { z } from "zod";
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid ID");
 
-/**
- * Public self-registration form — mirrors the KMCC membership form fields.
- * Either `zone` (an existing Zone _id) or `zoneOther` (free text, "Not in
- * list") must be supplied, and likewise for coordinator.
- */
 export const publicRegisterSchema = z
   .object({
-    zone: objectId.optional(),
+    zone: z.string().optional(),
     zoneOther: z.string().trim().max(150).optional(),
     nativePlace: z.string().trim().min(1, "Native place is required").max(150),
-    coordinator: objectId.optional(),
+    coordinator: z.string().optional(),
     coordinatorOther: z.string().trim().max(150).optional(),
     workingCountry: z.string().trim().min(1, "Working country is required").max(100),
     mandalamCommittee: z.string().trim().max(150).optional(),
     fullName: z.string().trim().min(2, "Name is required").max(150),
+    fatherName: z.string().trim().min(1, "Father's name is required").max(150),
+    address: z.string().trim().min(1, "Address is required").max(500),
+    bloodGroup: z.string().min(1, "Blood group is required"),
     phone: z
       .string()
       .trim()
@@ -40,7 +38,7 @@ export const publicRegisterSchema = z
 export const approveMemberSchema = z.object({
   membershipType: objectId,
   membershipStart: z.coerce.date().optional(),
-  password: z.string().min(6).optional(), // auto-generated if omitted
+  password: z.string().min(6).optional(),
   committeeRole: z.string().trim().max(150).optional(),
   unit: z.string().trim().max(150).optional(),
 });
@@ -65,7 +63,7 @@ export const adminCreateMemberSchema = z.object({
   passportNumber: z.string().trim().max(50).optional(),
   civilId: z.string().trim().max(50).optional(),
   occupation: z.string().trim().max(150).optional(),
-  zone: objectId.optional(),
+  zone: z.string().optional(),
   nativePlace: z.string().trim().max(150).optional(),
   committeeRole: z.string().trim().max(150).optional(),
   unit: z.string().trim().max(150).optional(),
@@ -95,7 +93,7 @@ export const transferMembershipSchema = z.object({
 });
 
 export const resetMemberPasswordSchema = z.object({
-  newPassword: z.string().min(6).optional(), // auto-generated if omitted
+  newPassword: z.string().min(6).optional(),
 });
 
 export const zoneSchema = z.object({
@@ -106,7 +104,7 @@ export const zoneSchema = z.object({
 
 export const coordinatorSchema = z.object({
   name: z.string().trim().min(1).max(150),
-  zone: objectId.optional(),
+  zone: z.string().optional(),
   phone: z.string().trim().max(20).optional(),
 });
 

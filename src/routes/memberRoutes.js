@@ -17,13 +17,14 @@ import {
   generateMemberCard,
   exportMembers,
   getMemberStats,
+  publicRegisterMember,
 } from "../controllers/memberController.js";
-import {
-  listFamilyMembers,
-  addFamilyMember,
-  updateFamilyMember,
-  deleteFamilyMember,
-} from "../controllers/familyMemberController.js";
+import { 
+  memberLogin, 
+  adminLogin, 
+  logout, 
+  refreshAccessToken 
+} from "../controllers/authController.js";
 import { authenticate, requireAdmin } from "../middlewares/auth.js";
 import validate from "../middlewares/validate.js";
 import { uploadImage } from "../middlewares/upload.js";
@@ -36,13 +37,32 @@ import {
   transferMembershipSchema,
   resetMemberPasswordSchema,
   paginationQuerySchema,
+  publicRegisterSchema,
 } from "../validators/memberValidators.js";
-import { familyMemberSchema, familyMemberUpdateSchema } from "../validators/familyMemberValidators.js";
+import { z } from "zod";
 
 const router = Router();
 
-// All routes below require an authenticated admin (editor can view/create,
-// suspend/delete restricted to admin & super_admin — enforced per-route).
+const memberLoginSchema = z.object({
+  membershipId: z.string().min(1, "Membership ID is required"),
+  password: z.string().min(1, "Password is required"),
+});
+
+const adminLoginSchema = z.object({
+  email: z.string().email("Valid email is required"),
+  password: z.string().min(1, "Password is required"),
+});
+
+// Public routes (no authentication required)
+router.post("/public/register", uploadImage.single("photo"), validate(publicRegisterSchema), publicRegisterMember);
+router.post("/public/login", validate(memberLoginSchema), memberLogin);
+router.post("/public/logout", logout);
+router.post("/public/refresh", refreshAccessToken);
+
+// Admin login (separate from member login)
+router.post("/admin/login", validate(adminLoginSchema), adminLogin);
+
+// All routes below require an authenticated admin
 router.use(authenticate, requireAdmin());
 
 router.get("/stats", getMemberStats);
@@ -66,16 +86,5 @@ router.get("/:id/card", generateMemberCard);
 
 router.delete("/:id", requireAdmin("super_admin", "admin"), deleteMember);
 router.post("/bulk-delete", requireAdmin("super_admin", "admin"), bulkDeleteMembers);
-
-// Family members nested under a specific member (admin view)
-router.get("/:memberId/family", listFamilyMembers);
-router.post("/:memberId/family", uploadImage.single("photo"), validate(familyMemberSchema), addFamilyMember);
-router.patch(
-  "/:memberId/family/:id",
-  uploadImage.single("photo"),
-  validate(familyMemberUpdateSchema),
-  updateFamilyMember
-);
-router.delete("/:memberId/family/:id", deleteFamilyMember);
 
 export default router;

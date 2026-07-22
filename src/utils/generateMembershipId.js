@@ -1,35 +1,25 @@
-import Member from "../models/Member.js";
+import Counter from "../models/Counter.js";
 
-/**
- * Generates a sequential, human-readable membership ID such as
- * GKAP-2026-000123. Falls back to a timestamp-based suffix if a
- * race condition is detected on the sequence lookup.
- */
 const generateMembershipId = async () => {
-  const year = new Date().getFullYear();
-  const prefix = `GKAP-${year}-`;
+  let counter = await Counter.findById("membershipId");
 
-  const lastMember = await Member.findOne({ membershipId: new RegExp(`^${prefix}`) })
-    .sort({ createdAt: -1 })
-    .select("membershipId")
-    .lean();
-
-  let nextSeq = 1;
-
-  if (lastMember?.membershipId) {
-    const lastSeq = parseInt(lastMember.membershipId.split("-").pop(), 10);
-    if (!Number.isNaN(lastSeq)) nextSeq = lastSeq + 1;
+  if (!counter) {
+    try {
+      counter = await Counter.create({ _id: "membershipId", seq: 1000 });
+    } catch (error) {
+      if (error.code !== 11000) {
+        throw error;
+      }
+    }
   }
 
-  const padded = String(nextSeq).padStart(6, "0");
-  const candidateId = `${prefix}${padded}`;
+  const updated = await Counter.findOneAndUpdate(
+    { _id: "membershipId" },
+    { $inc: { seq: 1 } },
+    { new: true, upsert: true }
+  );
 
-  const exists = await Member.exists({ membershipId: candidateId });
-  if (exists) {
-    return `${prefix}${Date.now().toString().slice(-6)}`;
-  }
-
-  return candidateId;
+  return String(updated.seq);
 };
 
 export default generateMembershipId;

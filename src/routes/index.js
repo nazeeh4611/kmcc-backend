@@ -17,7 +17,6 @@ import settingsRoutes from "./settingsRoutes.js";
 const router = Router();
 
 router.use("/auth", authRoutes);
-router.use("/public", publicRoutes);
 router.use("/members", memberRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/zones", zoneRoutes);

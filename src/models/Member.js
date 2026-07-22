@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
+import generateMembershipId from "../utils/generateMembershipId.js";
 
 const imageSchema = new mongoose.Schema(
   {
@@ -14,35 +15,27 @@ const memberSchema = new mongoose.Schema(
     membershipId: {
       type: String,
       unique: true,
-      uppercase: true,
       trim: true,
-      index: true,
-      // Auto-generated as a PENDING-* placeholder for public self-registrations
-      // and replaced with a proper GKAP-YYYY-###### ID when admin approves.
-    },
-    familyId: {
-      type: String,
-      trim: true,
-      default: null,
       index: true,
     },
     password: {
       type: String,
       minlength: 6,
       select: false,
-      // Not required at the document level: public self-registrations start
-      // without a password and get one issued at approval time.
     },
 
-    // Personal details
     fullName: { type: String, required: true, trim: true, maxlength: 150 },
-    photo: { type: imageSchema, default: () => ({}) },
-    fatherName: { type: String, trim: true },
-    motherName: { type: String, trim: true },
+    fatherName: { type: String, required: true, trim: true, maxlength: 150 },
+    photo: {
+      type: imageSchema,
+      required: [true, "Photo is required."],
+      validate: {
+        validator: (value) => Boolean(value && value.url),
+        message: "Photo is required.",
+      },
+    },
     dob: { type: Date },
     birthYear: {
-      // Captured directly on the public registration form (4-digit year);
-      // dob can be completed later by the member/admin for full accuracy.
       type: Number,
       min: 1900,
       max: new Date().getFullYear(),
@@ -51,17 +44,15 @@ const memberSchema = new mongoose.Schema(
     bloodGroup: {
       type: String,
       enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "unknown"],
-      default: "unknown",
+      required: true,
     },
 
-    // Contact
     phone: {
       type: String,
       required: true,
       trim: true,
       match: [/^[0-9+\-\s()]{7,20}$/, "Enter a valid phone number"],
     },
-    whatsapp: { type: String, trim: true },
     email: {
       type: String,
       lowercase: true,
@@ -70,30 +61,16 @@ const memberSchema = new mongoose.Schema(
       match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "Enter a valid email"],
     },
 
-    // Address
-    address: { type: String, trim: true },
-    houseName: { type: String, trim: true },
-    place: { type: String, trim: true },
-    postOffice: { type: String, trim: true },
-    district: { type: String, trim: true },
-    state: { type: String, trim: true },
-    country: { type: String, trim: true, default: "India" },
-    workingCountry: { type: String, trim: true },
+    address: { type: String, required: true, trim: true },
+    nativePlace: { type: String, required: true, trim: true },
+    workingCountry: { type: String, required: true, trim: true },
 
-    // Registration-form specific fields (mirrors the public KMCC form)
-    zone: { type: mongoose.Schema.Types.ObjectId, ref: "Zone", default: null },
-    zoneOther: { type: String, trim: true, default: null }, // used when "Not in list" is chosen
-    nativePlace: { type: String, trim: true }, // "നാട്ടിലെ സ്ഥലം"
-    coordinator: { type: mongoose.Schema.Types.ObjectId, ref: "Coordinator", default: null },
-    coordinatorOther: { type: String, trim: true, default: null }, // "Not in List"
-    mandalamCommittee: { type: String, trim: true, default: "രൂപീകരിച്ചിട്ടില്ല" }, // free text / "not yet formed"
+    zone: { type: String, default: null },
+    zoneOther: { type: String, trim: true, default: null },
+    coordinator: { type: String, default: null },
+    coordinatorOther: { type: String, trim: true, default: null },
+    mandalamCommittee: { type: String, trim: true, default: "രൂപീകരിച്ചിട്ടില്ല" },
 
-    // Identity documents
-    passportNumber: { type: String, trim: true },
-    civilId: { type: String, trim: true },
-    occupation: { type: String, trim: true },
-
-    // Membership lifecycle
     joinedDate: { type: Date, default: Date.now },
     membershipStatus: {
       type: String,
@@ -112,16 +89,10 @@ const memberSchema = new mongoose.Schema(
     isExpired: { type: Boolean, default: false },
     graceEndsAt: { type: Date, default: null },
 
-    // Organization
     committeeRole: { type: String, trim: true, default: null },
     panchayath: { type: String, trim: true, default: "Anganganadi" },
     unit: { type: String, trim: true },
 
-    // Media
-    cloudinaryImage: { type: imageSchema, default: () => ({}) },
-
-    // Membership history archive (kept when a member is renewed under a
-    // brand-new membership after permanent inactivation)
     membershipHistory: [
       {
         membershipType: { type: mongoose.Schema.Types.ObjectId, ref: "MembershipPlan" },
@@ -151,19 +122,25 @@ const memberSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-memberSchema.index({ fullName: "text", phone: "text", email: "text", passportNumber: "text" });
+memberSchema.index({ fullName: "text", phone: "text", email: "text" });
 memberSchema.index({ membershipExpiry: 1 });
-memberSchema.index({ district: 1, country: 1 });
 
-memberSchema.pre("validate", function preValidatePlaceholderId(next) {
+memberSchema.pre("validate", async function preValidate(next) {
   if (!this.membershipId) {
-    const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
-    this.membershipId = `PENDING-${Date.now().toString().slice(-6)}${rand}`;
+    try {
+      this.membershipId = await generateMembershipId();
+    } catch (error) {
+      return next(error);
+    }
   }
   next();
 });
 
 memberSchema.pre("save", async function preSave(next) {
+  if (!this.password) {
+    this.password = await bcrypt.hash("2026", 12);
+  }
+  
   if (this.isModified("password") && this.password) {
     this.password = await bcrypt.hash(this.password, 12);
   }
