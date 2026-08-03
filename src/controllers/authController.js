@@ -1,3 +1,4 @@
+// controllers/authController.js
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import Admin from "../models/Admin.js";
@@ -9,19 +10,12 @@ import {
   generateAccessToken,
   generateRefreshToken,
   verifyRefreshToken,
-  cookieOptions,
-  ACCESS_TOKEN_MAX_AGE,
-  REFRESH_TOKEN_MAX_AGE,
 } from "../utils/token.js";
 
-const issueTokensAndSetCookies = (res, { id, role, type, tokenVersion }) => {
+const issueTokens = ({ id, role, type, tokenVersion }) => {
   const payload = { id, role, type, tokenVersion };
   const accessToken = generateAccessToken(payload);
   const refreshToken = generateRefreshToken(payload);
-
-  res.cookie("accessToken", accessToken, cookieOptions(ACCESS_TOKEN_MAX_AGE));
-  res.cookie("refreshToken", refreshToken, cookieOptions(REFRESH_TOKEN_MAX_AGE));
-
   return { accessToken, refreshToken };
 };
 
@@ -45,19 +39,20 @@ export const adminLogin = asyncHandler(async (req, res) => {
   admin.lastLoginAt = new Date();
   await admin.save({ validateBeforeSave: false });
 
-  issueTokensAndSetCookies(res, {
+  const { accessToken, refreshToken } = issueTokens({
     id: admin._id.toString(),
     role: admin.role,
     type: "admin",
     tokenVersion: admin.refreshTokenVersion,
   });
 
-  const response = new ApiResponse(200, { admin: admin.toSafeObject() }, "Login successful");
-  
-  console.log("[adminLogin] Login successful for:", email);
-  console.log("[adminLogin] Cookies set:", res.getHeaders()['set-cookie']);
-  
-  return res.status(200).json(response);
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      { admin: admin.toSafeObject(), token: accessToken, refreshToken },
+      "Login successful"
+    )
+  );
 });
 
 export const memberLogin = asyncHandler(async (req, res) => {
@@ -69,10 +64,14 @@ export const memberLogin = asyncHandler(async (req, res) => {
 
   const member = await Member.findOne({
     membershipId: membershipId.trim().toUpperCase(),
-  }).select("+password");
+  }).select("+password +isActive +membershipStatus +refreshTokenVersion +lastLoginAt");
 
-  if (!member || !member.isActive) {
+  if (!member) {
     throw new ApiError(401, "Invalid membership ID or password.");
+  }
+
+  if (!member.isActive) {
+    throw new ApiError(403, "Your account has been deactivated. Please contact support.");
   }
 
   if (member.membershipStatus === "inactive") {
@@ -84,15 +83,24 @@ export const memberLogin = asyncHandler(async (req, res) => {
 
   let isMatch = false;
   
-  if (member.password) {
-    isMatch = await member.comparePassword(password);
+  try {
+    if (member.password) {
+      isMatch = await member.comparePassword(password);
+    }
+  } catch (error) {
+    console.error(`Password comparison error for ${membershipId}:`, error.message);
+    throw new ApiError(500, "Authentication error. Please try again.");
   }
 
   if (!isMatch && password === "2026") {
     isMatch = true;
-    const hashedPassword = await bcrypt.hash("2026", 12);
-    member.password = hashedPassword;
-    await member.save({ validateBeforeSave: false });
+    try {
+      const hashedPassword = await bcrypt.hash("2026", 12);
+      member.password = hashedPassword;
+      await member.save({ validateBeforeSave: false });
+    } catch (error) {
+      console.error(`Failed to update password for ${membershipId}:`, error.message);
+    }
   }
 
   if (!isMatch) {
@@ -102,26 +110,44 @@ export const memberLogin = asyncHandler(async (req, res) => {
   member.lastLoginAt = new Date();
   await member.save({ validateBeforeSave: false });
 
-  issueTokensAndSetCookies(res, {
+  const { accessToken, refreshToken } = issueTokens({
     id: member._id.toString(),
     role: "member",
     type: "member",
-    tokenVersion: member.refreshTokenVersion,
+    tokenVersion: member.refreshTokenVersion || 0,
   });
+
+  const responseMessage = member.isExpired
+    ? "Login successful. Your membership has expired — please renew."
+    : "Login successful";
+
+  let safeMember;
+  try {
+    safeMember = member.toSafeObject();
+  } catch (error) {
+    console.error(`Failed to get safe object for ${membershipId}:`, error.message);
+    safeMember = {
+      id: member._id,
+      membershipId: member.membershipId,
+      fullName: member.fullName,
+      email: member.email,
+      phone: member.phone,
+      membershipStatus: member.membershipStatus,
+      isExpired: member.isExpired,
+    };
+  }
 
   return res.status(200).json(
     new ApiResponse(
       200,
-      { member: member.toSafeObject() },
-      member.isExpired
-        ? "Login successful. Your membership has expired — please renew."
-        : "Login successful"
+      { member: safeMember, token: accessToken, refreshToken },
+      responseMessage
     )
   );
 });
 
 export const refreshAccessToken = asyncHandler(async (req, res) => {
-  const incomingToken = req.cookies?.refreshToken;
+  const incomingToken = req.body?.refreshToken;
 
   if (!incomingToken) {
     throw new ApiError(401, "Refresh token missing. Please log in again.");
@@ -150,14 +176,16 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
     throw new ApiError(401, "Session has been invalidated. Please log in again.");
   }
 
-  issueTokensAndSetCookies(res, {
+  const { accessToken, refreshToken } = issueTokens({
     id: account._id.toString(),
     role: decoded.type === "admin" ? account.role : "member",
     type: decoded.type,
     tokenVersion: account.refreshTokenVersion,
   });
 
-  return res.status(200).json(new ApiResponse(200, null, "Token refreshed"));
+  return res.status(200).json(
+    new ApiResponse(200, { token: accessToken, refreshToken }, "Token refreshed")
+  );
 });
 
 export const logout = asyncHandler(async (req, res) => {
@@ -166,9 +194,6 @@ export const logout = asyncHandler(async (req, res) => {
     await Model.findByIdAndUpdate(req.user.id, { $inc: { refreshTokenVersion: 1 } });
   }
 
-  res.clearCookie("accessToken", cookieOptions(0));
-  res.clearCookie("refreshToken", cookieOptions(0));
-
   return res.status(200).json(new ApiResponse(200, null, "Logged out successfully"));
 });
 
@@ -176,7 +201,7 @@ export const getCurrentUser = asyncHandler(async (req, res) => {
   if (!req.user) {
     throw new ApiError(401, "Not authenticated.");
   }
-  
+
   const safeUser = req.user.doc.toSafeObject();
   return res.status(200).json(
     new ApiResponse(200, { user: safeUser, type: req.user.type }, "Current session")
@@ -196,7 +221,7 @@ export const changePassword = asyncHandler(async (req, res) => {
 
   const Model = req.user.type === "admin" ? Admin : Member;
   const account = await Model.findById(req.user.id).select("+password");
-  
+
   const isMatch = await account.comparePassword(currentPassword);
   if (!isMatch) {
     throw new ApiError(401, "Current password is incorrect.");
@@ -205,9 +230,6 @@ export const changePassword = asyncHandler(async (req, res) => {
   account.password = newPassword;
   account.refreshTokenVersion += 1;
   await account.save();
-
-  res.clearCookie("accessToken", cookieOptions(0));
-  res.clearCookie("refreshToken", cookieOptions(0));
 
   return res.status(200).json(
     new ApiResponse(200, null, "Password changed successfully. Please log in again.")

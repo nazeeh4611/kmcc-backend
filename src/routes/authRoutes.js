@@ -1,3 +1,4 @@
+// routes/authRoutes.js
 import { Router } from "express";
 import {
   adminLogin,

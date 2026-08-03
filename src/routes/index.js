@@ -13,6 +13,7 @@ import eventRoutes from "./eventRoutes.js";
 import carouselRoutes from "./carouselRoutes.js";
 import downloadRoutes from "./downloadRoutes.js";
 import settingsRoutes from "./settingsRoutes.js";
+import membershipPlanRoutes from "./membershipPlanRoutes.js";
 
 const router = Router();
 
@@ -29,6 +30,7 @@ router.use("/events", eventRoutes);
 router.use("/carousel", carouselRoutes);
 router.use("/downloads", downloadRoutes);
 router.use("/settings", settingsRoutes);
+router.use("/membership-plans", membershipPlanRoutes);
 
 router.get("/health", (req, res) => {
   res.status(200).json({ success: true, message: "API is healthy", timestamp: new Date().toISOString() });

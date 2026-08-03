@@ -48,9 +48,9 @@ export const publicRegisterMember = async (req, res) => {
     const duplicate = await Member.findOne({ phone, membershipStatus: { $ne: "inactive" } });
     if (duplicate) {
       console.log("ERROR: Duplicate phone found");
-      return res.status(409).json({ 
-        success: false, 
-        message: "An application with this mobile number already exists." 
+      return res.status(409).json({
+        success: false,
+        message: "An application with this mobile number already exists.",
       });
     }
 
@@ -64,10 +64,10 @@ export const publicRegisterMember = async (req, res) => {
       console.log("Cloudinary upload successful");
     } catch (cloudinaryError) {
       console.error("Cloudinary upload failed:", cloudinaryError);
-      return res.status(500).json({ 
-        success: false, 
-        message: "Photo upload failed", 
-        error: cloudinaryError.message 
+      return res.status(500).json({
+        success: false,
+        message: "Photo upload failed",
+        error: cloudinaryError.message,
       });
     }
 
@@ -99,10 +99,10 @@ export const publicRegisterMember = async (req, res) => {
       console.log("Member created successfully:", member._id);
     } catch (dbError) {
       console.error("Database creation failed:", dbError);
-      return res.status(500).json({ 
-        success: false, 
-        message: "Database creation failed", 
-        error: dbError.message 
+      return res.status(500).json({
+        success: false,
+        message: "Database creation failed",
+        error: dbError.message,
       });
     }
 
@@ -119,10 +119,10 @@ export const publicRegisterMember = async (req, res) => {
   } catch (error) {
     console.error("===== UNHANDLED ERROR =====");
     console.error("Error details:", error);
-    return res.status(500).json({ 
-      success: false, 
-      message: "Internal server error", 
-      error: error.message 
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
     });
   }
 };
@@ -533,4 +533,38 @@ export const getMemberStats = asyncHandler(async (req, res) => {
       "Member statistics fetched"
     )
   );
+});
+
+export const getMyMembershipDetails = asyncHandler(async (req, res) => {
+  if (req.user.type !== "member") {
+    throw new ApiError(403, "Only members can access this resource.");
+  }
+
+  const member = await Member.findById(req.user.id).populate("membershipType", "title price duration");
+  if (!member) throw new ApiError(404, "Member not found.");
+
+  return res.status(200).json(new ApiResponse(200, { member: member.toSafeObject() }, "Membership details fetched"));
+});
+
+export const downloadMyMembershipCard = asyncHandler(async (req, res) => {
+  if (req.user.type !== "member") {
+    throw new ApiError(403, "Only members can access this resource.");
+  }
+
+  const member = await Member.findById(req.user.id).populate("membershipType", "title");
+  if (!member) throw new ApiError(404, "Member not found.");
+  if (member.membershipStatus === "pending") {
+    throw new ApiError(400, "Cannot generate a card for a pending application.");
+  }
+
+  const settings = await Settings.findOne({ singleton: "global_settings" }).lean();
+  const pdfBuffer = await generateMembershipCardPdf(member.toObject(), settings);
+
+  res.set({
+    "Content-Type": "application/pdf",
+    "Content-Disposition": `attachment; filename="${member.membershipId}-card.pdf"`,
+    "Content-Length": pdfBuffer.length,
+  });
+
+  return res.status(200).send(pdfBuffer);
 });

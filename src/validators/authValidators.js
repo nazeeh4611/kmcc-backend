@@ -2,12 +2,12 @@ import { z } from "zod";
 
 export const adminLoginSchema = z.object({
   email: z.string().trim().email("Enter a valid email"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  password: z.string().min(4, "Password must be at least 4 characters"),
 });
 
 export const memberLoginSchema = z.object({
   membershipId: z.string().trim().min(3, "Membership ID is required"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  password: z.string().min(4, "Password must be at least 4 characters"),
 });
 
 export const changePasswordSchema = z

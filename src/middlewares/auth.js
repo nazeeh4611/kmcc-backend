@@ -1,3 +1,4 @@
+// middlewares/auth.js
 import asyncHandler from "../utils/asyncHandler.js";
 import ApiError from "../utils/ApiError.js";
 import { verifyAccessToken } from "../utils/token.js";
@@ -5,20 +6,16 @@ import Admin from "../models/Admin.js";
 import Member from "../models/Member.js";
 
 const extractToken = (req) => {
-  if (req.cookies?.accessToken) return req.cookies.accessToken;
   const header = req.headers.authorization;
   if (header?.startsWith("Bearer ")) return header.split(" ")[1];
   return null;
 };
 
-/**
- * Verifies the access token and attaches req.user = { id, role, type }.
- * Does NOT restrict by type — use requireAdmin / requireMember after this.
- */
 export const authenticate = asyncHandler(async (req, res, next) => {
   const token = extractToken(req);
 
   if (!token) {
+    console.log("No token found in request headers");
     throw new ApiError(401, "Authentication required. Please log in.");
   }
 
@@ -51,7 +48,6 @@ export const authenticate = asyncHandler(async (req, res, next) => {
   next();
 });
 
-/** Restrict route to admin-type users, optionally by specific roles. */
 export const requireAdmin = (...roles) =>
   asyncHandler(async (req, res, next) => {
     if (!req.user || req.user.type !== "admin") {
@@ -63,7 +59,6 @@ export const requireAdmin = (...roles) =>
     next();
   });
 
-/** Restrict route to member-type users. */
 export const requireMember = asyncHandler(async (req, res, next) => {
   if (!req.user || req.user.type !== "member") {
     throw new ApiError(403, "Member access required.");

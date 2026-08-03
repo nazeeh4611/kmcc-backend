@@ -1,3 +1,4 @@
+// models/Member.js
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import generateMembershipId from "../utils/generateMembershipId.js";
@@ -112,6 +113,19 @@ const memberSchema = new mongoose.Schema(
       reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Admin" },
     },
 
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
+    },
+    emailVerificationToken: {
+      type: String,
+      select: false,
+    },
+    emailVerificationExpires: {
+      type: Date,
+      select: false,
+    },
+
     refreshTokenVersion: { type: Number, default: 0 },
     isActive: { type: Boolean, default: true },
     lastLoginAt: { type: Date, default: null },
@@ -137,12 +151,20 @@ memberSchema.pre("validate", async function preValidate(next) {
 });
 
 memberSchema.pre("save", async function preSave(next) {
-  if (!this.password) {
-    this.password = await bcrypt.hash("2026", 12);
-  }
-  
   if (this.isModified("password") && this.password) {
-    this.password = await bcrypt.hash(this.password, 12);
+    try {
+      this.password = await bcrypt.hash(this.password, 12);
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  if (this.isNew && !this.password) {
+    try {
+      this.password = await bcrypt.hash("2026", 12);
+    } catch (error) {
+      return next(error);
+    }
   }
 
   if (this.membershipExpiry) {
@@ -159,13 +181,24 @@ memberSchema.pre("save", async function preSave(next) {
 });
 
 memberSchema.methods.comparePassword = async function comparePassword(candidate) {
-  return bcrypt.compare(candidate, this.password);
+  if (!candidate || !this.password) {
+    return false;
+  }
+  
+  try {
+    return await bcrypt.compare(candidate, this.password);
+  } catch (error) {
+    console.error("Password comparison error:", error);
+    return false;
+  }
 };
 
 memberSchema.methods.toSafeObject = function toSafeObject() {
   const obj = this.toObject();
   delete obj.password;
   delete obj.refreshTokenVersion;
+  delete obj.emailVerificationToken;
+  delete obj.emailVerificationExpires;
   return obj;
 };
 

@@ -18,13 +18,9 @@ import {
   exportMembers,
   getMemberStats,
   publicRegisterMember,
+  getMyMembershipDetails,
+  downloadMyMembershipCard,
 } from "../controllers/memberController.js";
-import { 
-  memberLogin, 
-  adminLogin, 
-  logout, 
-  refreshAccessToken 
-} from "../controllers/authController.js";
 import { authenticate, requireAdmin } from "../middlewares/auth.js";
 import validate from "../middlewares/validate.js";
 import { uploadImage } from "../middlewares/upload.js";
@@ -39,30 +35,14 @@ import {
   paginationQuerySchema,
   publicRegisterSchema,
 } from "../validators/memberValidators.js";
-import { z } from "zod";
 
 const router = Router();
 
-const memberLoginSchema = z.object({
-  membershipId: z.string().min(1, "Membership ID is required"),
-  password: z.string().min(1, "Password is required"),
-});
-
-const adminLoginSchema = z.object({
-  email: z.string().email("Valid email is required"),
-  password: z.string().min(1, "Password is required"),
-});
-
-// Public routes (no authentication required)
 router.post("/public/register", uploadImage.single("photo"), validate(publicRegisterSchema), publicRegisterMember);
-router.post("/public/login", validate(memberLoginSchema), memberLogin);
-router.post("/public/logout", logout);
-router.post("/public/refresh", refreshAccessToken);
 
-// Admin login (separate from member login)
-router.post("/admin/login", validate(adminLoginSchema), adminLogin);
+router.get("/me", authenticate, getMyMembershipDetails);
+router.get("/me/card", authenticate, downloadMyMembershipCard);
 
-// All routes below require an authenticated admin
 router.use(authenticate, requireAdmin());
 
 router.get("/stats", getMemberStats);
