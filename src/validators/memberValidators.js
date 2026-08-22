@@ -43,38 +43,26 @@ export const approveMemberSchema = z.object({
   unit: z.string().trim().max(150).optional(),
 });
 
+
 export const adminCreateMemberSchema = z.object({
   fullName: z.string().trim().min(2).max(150),
   phone: z.string().trim().min(7).max(20),
-  email: z.string().trim().email().optional().or(z.literal("")),
-  gender: z.enum(["male", "female", "other"]),
-  dob: z.coerce.date().optional(),
-  bloodGroup: z.enum(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "unknown"]).optional(),
-  fatherName: z.string().trim().max(150).optional(),
-  motherName: z.string().trim().max(150).optional(),
-  address: z.string().trim().max(500).optional(),
-  houseName: z.string().trim().max(150).optional(),
-  place: z.string().trim().max(150).optional(),
-  postOffice: z.string().trim().max(150).optional(),
-  district: z.string().trim().max(150).optional(),
-  state: z.string().trim().max(150).optional(),
-  country: z.string().trim().max(100).optional(),
-  workingCountry: z.string().trim().max(100).optional(),
-  passportNumber: z.string().trim().max(50).optional(),
-  civilId: z.string().trim().max(50).optional(),
-  occupation: z.string().trim().max(150).optional(),
+  fatherName: z.string().trim().min(1).max(150),
+  address: z.string().trim().min(1).max(500),
+  bloodGroup: z.enum(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]),
+  workingCountry: z.string().trim().min(1).max(100),
+  gender: z.enum(["male", "female", "other"]).optional().default("male"),
   zone: z.string().optional(),
-  nativePlace: z.string().trim().max(150).optional(),
   committeeRole: z.string().trim().max(150).optional(),
   unit: z.string().trim().max(150).optional(),
-  membershipType: objectId,
+  membershipType: objectId.optional(),
   membershipStart: z.coerce.date().optional(),
   password: z.string().min(6).optional(),
 });
 
-export const adminUpdateMemberSchema = adminCreateMemberSchema.partial().extend({
-  membershipType: objectId.optional(),
-});
+export const adminUpdateMemberSchema = adminCreateMemberSchema.partial();
+
+
 
 export const renewMembershipSchema = z.object({
   membershipType: objectId,

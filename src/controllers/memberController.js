@@ -250,12 +250,17 @@ export const createMember = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Photo is required.");
   }
 
-  const plan = await MembershipPlan.findById(body.membershipType);
-  if (!plan || !plan.isActive) throw new ApiError(400, "Selected membership plan is invalid.");
+  let plan = null;
+  let start = null;
+  let expiry = null;
 
-  const start = body.membershipStart ? new Date(body.membershipStart) : new Date();
-  const expiry = new Date(start);
-  expiry.setMonth(expiry.getMonth() + plan.duration);
+  if (body.membershipType) {
+    plan = await MembershipPlan.findById(body.membershipType);
+    if (!plan || !plan.isActive) throw new ApiError(400, "Selected membership plan is invalid.");
+    start = body.membershipStart ? new Date(body.membershipStart) : new Date();
+    expiry = new Date(start);
+    expiry.setMonth(expiry.getMonth() + plan.duration);
+  }
 
   const uploadResult = await uploadBufferToCloudinary(req.file.buffer, {
     folder: "kmcc_panchayath/members",
@@ -264,17 +269,25 @@ export const createMember = asyncHandler(async (req, res) => {
 
   const plainPassword = body.password || generateTempPassword();
 
-  const member = await Member.create({
+  const memberData = {
     ...body,
     password: plainPassword,
-    membershipType: plan._id,
-    membershipStart: start,
-    membershipExpiry: expiry,
     membershipStatus: "active",
     photo,
     createdBy: req.user.id,
     updatedBy: req.user.id,
-  });
+  };
+
+  if (plan) {
+    memberData.membershipType = plan._id;
+    memberData.membershipStart = start;
+    memberData.membershipExpiry = expiry;
+  } else {
+    delete memberData.membershipType;
+    delete memberData.membershipStart;
+  }
+
+  const member = await Member.create(memberData);
 
   if (member.email) {
     sendWelcomeEmail(member.email, member).catch((err) =>
