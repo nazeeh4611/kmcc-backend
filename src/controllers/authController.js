@@ -80,6 +80,13 @@ export const memberLogin = asyncHandler(async (req, res) => {
     );
   }
 
+  if (member.membershipStatus === "suspended") {
+    throw new ApiError(
+      403,
+      "Your membership has been suspended. Please contact the panchayath office."
+    );
+  }
+
   let isMatch = false;
 
   try {
