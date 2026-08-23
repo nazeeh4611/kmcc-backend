@@ -74,7 +74,7 @@ export const sendMembershipReminderEmail = async (email, member, daysRemaining) 
   });
 };
 
-export const sendWelcomeEmail = async (email, member) => {
+export const sendWelcomeEmail = async (email, member, temporaryPassword) => {
   return sendMail({
     to: email,
     subject: "Welcome to Global KMCC Anganganadi Panchayath",
@@ -83,7 +83,12 @@ export const sendWelcomeEmail = async (email, member) => {
         <h2 style="color:#0B5D1E;">Welcome, ${member.fullName}!</h2>
         <p>Your membership has been created successfully.</p>
         <p><strong>Membership ID:</strong> ${member.membershipId}</p>
-        <p>Use your Membership ID and the password provided to you to log in to the member dashboard.</p>
+        ${
+          temporaryPassword
+            ? `<p><strong>Password:</strong> ${temporaryPassword}</p>
+               <p>Use your Membership ID and this password to log in to the member dashboard. Please change your password after your first login.</p>`
+            : `<p>Use your Membership ID and the password provided to you by your coordinator to log in to the member dashboard.</p>`
+        }
       </div>
     `,
   });

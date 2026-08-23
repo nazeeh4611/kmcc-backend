@@ -178,7 +178,7 @@ export const approveMember = asyncHandler(async (req, res) => {
   await member.save();
 
   if (member.email) {
-    sendWelcomeEmail(member.email, member).catch((err) =>
+    sendWelcomeEmail(member.email, member, password ? undefined : plainPassword).catch((err) =>
       console.error("[approveMember] Welcome email failed:", err.message)
     );
   }
@@ -255,7 +255,7 @@ export const createMember = asyncHandler(async (req, res) => {
   const member = await Member.create(memberData);
 
   if (member.email) {
-    sendWelcomeEmail(member.email, member).catch((err) =>
+    sendWelcomeEmail(member.email, member, body.password ? undefined : plainPassword).catch((err) =>
       console.error("[createMember] Welcome email failed:", err.message)
     );
   }
