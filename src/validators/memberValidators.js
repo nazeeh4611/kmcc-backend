@@ -1,6 +1,9 @@
 import { z } from "zod";
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid ID");
+// Member passwords are 4-digit PINs — the member login form only accepts
+// exactly 4 digits, so any custom password an admin sets must match too.
+const memberPin = z.string().regex(/^\d{4}$/, "Password must be exactly 4 digits");
 
 export const publicRegisterSchema = z
   .object({
@@ -38,7 +41,7 @@ export const publicRegisterSchema = z
 export const approveMemberSchema = z.object({
   membershipType: objectId,
   membershipStart: z.coerce.date().optional(),
-  password: z.string().min(6).optional(),
+  password: memberPin.optional(),
   committeeRole: z.string().trim().max(150).optional(),
   unit: z.string().trim().max(150).optional(),
 });
@@ -57,7 +60,7 @@ export const adminCreateMemberSchema = z.object({
   unit: z.string().trim().max(150).optional(),
   membershipType: objectId.optional(),
   membershipStart: z.coerce.date().optional(),
-  password: z.string().min(6).optional(),
+  password: memberPin.optional(),
 });
 
 export const adminUpdateMemberSchema = adminCreateMemberSchema.partial();
@@ -81,7 +84,7 @@ export const transferMembershipSchema = z.object({
 });
 
 export const resetMemberPasswordSchema = z.object({
-  newPassword: z.string().min(6).optional(),
+  newPassword: memberPin.optional(),
 });
 
 export const zoneSchema = z.object({

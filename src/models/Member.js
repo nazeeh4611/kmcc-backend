@@ -21,7 +21,7 @@ const memberSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      minlength: 6,
+      minlength: 4,
       select: false,
     },
 
