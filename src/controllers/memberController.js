@@ -16,116 +16,81 @@ import bcrypt from "bcryptjs";
 const generateTempPassword = () => Math.random().toString(36).slice(-8);
 const DEFAULT_PASSWORD = "2026";
 
-export const publicRegisterMember = async (req, res) => {
-  try {
-    console.log("===== STARTING REGISTRATION =====");
-    console.log("Request body:", JSON.stringify(req.body, null, 2));
-    console.log("File received:", req.file ? "Yes" : "No");
+export const publicRegisterMember = asyncHandler(async (req, res) => {
+  const {
+    zone,
+    zoneOther,
+    nativePlace,
+    coordinator,
+    coordinatorOther,
+    workingCountry,
+    mandalamCommittee,
+    fullName,
+    fatherName,
+    address,
+    bloodGroup,
+    phone,
+    email,
+    birthYear,
+  } = req.body;
 
-    const {
-      zone,
-      zoneOther,
-      nativePlace,
-      coordinator,
-      coordinatorOther,
-      workingCountry,
-      mandalamCommittee,
-      fullName,
-      fatherName,
-      address,
-      bloodGroup,
-      phone,
-      email,
-      birthYear,
-    } = req.body;
-
-    if (!req.file) {
-      console.log("ERROR: No photo file");
-      return res.status(400).json({ success: false, message: "Photo is required." });
-    }
-
-    console.log("Checking for duplicate phone...");
-    const duplicate = await Member.findOne({ phone, membershipStatus: { $ne: "inactive" } });
-    if (duplicate) {
-      console.log("ERROR: Duplicate phone found");
-      return res.status(409).json({
-        success: false,
-        message: "An application with this mobile number already exists.",
-      });
-    }
-
-    console.log("Uploading to Cloudinary...");
-    let photo;
-    try {
-      const uploadResult = await uploadBufferToCloudinary(req.file.buffer, {
-        folder: "kmcc_panchayath/members",
-      });
-      photo = { url: uploadResult.secure_url, publicId: uploadResult.public_id };
-      console.log("Cloudinary upload successful");
-    } catch (cloudinaryError) {
-      console.error("Cloudinary upload failed:", cloudinaryError);
-      return res.status(500).json({
-        success: false,
-        message: "Photo upload failed",
-        error: cloudinaryError.message,
-      });
-    }
-
-    console.log("Preparing member data...");
-    const memberData = {
-      zone: zone || null,
-      zoneOther: zoneOther || null,
-      nativePlace,
-      coordinator: coordinator || null,
-      coordinatorOther: coordinatorOther || null,
-      workingCountry,
-      mandalamCommittee: mandalamCommittee || "രൂപീകരിച്ചിട്ടില്ല",
-      fullName,
-      fatherName,
-      address,
-      bloodGroup,
-      phone,
-      email: email || undefined,
-      birthYear: parseInt(birthYear),
-      gender: "male",
-      photo,
-      membershipStatus: "pending",
-    };
-
-    console.log("Creating member in database...");
-    let member;
-    try {
-      member = await Member.create(memberData);
-      console.log("Member created successfully:", member._id);
-    } catch (dbError) {
-      console.error("Database creation failed:", dbError);
-      return res.status(500).json({
-        success: false,
-        message: "Database creation failed",
-        error: dbError.message,
-      });
-    }
-
-    console.log("===== REGISTRATION SUCCESS =====");
-    return res
-      .status(201)
-      .json(
-        new ApiResponse(
-          201,
-          { applicationId: member._id, membershipId: member.membershipId },
-          "Application submitted successfully. You will be notified once it is reviewed."
-        )
-      );
-  } catch (error) {
-    console.error("===== UNHANDLED ERROR =====");
-    console.error("Error details:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: error.message,
-    });
+  if (!req.file) {
+    throw new ApiError(400, "Photo is required.");
   }
-};
+
+  const duplicate = await Member.findOne({ phone, membershipStatus: { $ne: "inactive" } });
+  if (duplicate) {
+    throw new ApiError(409, "An application with this mobile number already exists.");
+  }
+
+  let photo;
+  try {
+    const uploadResult = await uploadBufferToCloudinary(req.file.buffer, {
+      folder: "kmcc_panchayath/members",
+    });
+    photo = { url: uploadResult.secure_url, publicId: uploadResult.public_id };
+  } catch (cloudinaryError) {
+    console.error("[publicRegisterMember] Cloudinary upload failed:", cloudinaryError.message);
+    throw new ApiError(500, "Photo upload failed. Please try again.");
+  }
+
+  const memberData = {
+    zone: zone || null,
+    zoneOther: zoneOther || null,
+    nativePlace,
+    coordinator: coordinator || null,
+    coordinatorOther: coordinatorOther || null,
+    workingCountry,
+    mandalamCommittee: mandalamCommittee || "രൂപീകരിച്ചിട്ടില്ല",
+    fullName,
+    fatherName,
+    address,
+    bloodGroup,
+    phone,
+    email: email || undefined,
+    birthYear: parseInt(birthYear, 10),
+    photo,
+    membershipStatus: "pending",
+  };
+
+  let member;
+  try {
+    member = await Member.create(memberData);
+  } catch (dbError) {
+    console.error("[publicRegisterMember] Member creation failed:", dbError.message);
+    throw new ApiError(500, "Could not submit your application. Please try again.");
+  }
+
+  return res
+    .status(201)
+    .json(
+      new ApiResponse(
+        201,
+        { applicationId: member._id, membershipId: member.membershipId },
+        "Application submitted successfully. You will be notified once it is reviewed."
+      )
+    );
+});
 
 export const verifyMemberPublic = asyncHandler(async (req, res) => {
   const member = await Member.findOne({ membershipId: req.params.membershipId.toUpperCase() })

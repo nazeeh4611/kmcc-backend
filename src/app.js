@@ -25,11 +25,24 @@ app.use(
   })
 );
 
-// CORS - only allow the configured frontend origin, with credentials for cookies
-const allowedOrigins = (process.env.CLIENT_URL || "").split(",").map((o) => o.trim());
+// CORS - only allow the configured frontend origin(s), with credentials for cookies
+const DEFAULT_ALLOWED_ORIGINS = [
+  "http://localhost:3000",
+  "https://kmcc-frontend.vercel.app",
+];
+const allowedOrigins = [
+  ...DEFAULT_ALLOWED_ORIGINS,
+  ...(process.env.CLIENT_URL || "").split(",").map((o) => o.trim()).filter(Boolean),
+];
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: (origin, callback) => {
+      // No Origin header (server-to-server, curl, mobile apps) — allow.
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`Not allowed by CORS: ${origin}`));
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],

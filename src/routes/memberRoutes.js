@@ -17,7 +17,6 @@ import {
   generateMemberCard,
   exportMembers,
   getMemberStats,
-  publicRegisterMember,
   getMyMembershipDetails,
   downloadMyMembershipCard,
 } from "../controllers/memberController.js";
@@ -33,12 +32,9 @@ import {
   transferMembershipSchema,
   resetMemberPasswordSchema,
   paginationQuerySchema,
-  publicRegisterSchema,
 } from "../validators/memberValidators.js";
 
 const router = Router();
-
-router.post("/public/register", uploadImage.single("photo"), validate(publicRegisterSchema), publicRegisterMember);
 
 router.get("/me", authenticate, getMyMembershipDetails);
 router.get("/me/card", authenticate, downloadMyMembershipCard);

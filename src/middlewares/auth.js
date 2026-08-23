@@ -15,7 +15,6 @@ export const authenticate = asyncHandler(async (req, res, next) => {
   const token = extractToken(req);
 
   if (!token) {
-    console.log("No token found in request headers");
     throw new ApiError(401, "Authentication required. Please log in.");
   }
 
