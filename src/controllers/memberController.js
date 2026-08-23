@@ -13,9 +13,9 @@ import { exportMembersToExcel } from "../services/excelService.js";
 import { sendWelcomeEmail } from "../services/emailService.js";
 import bcrypt from "bcryptjs";
 
-// Member passwords are 4-digit PINs — the member login form only accepts
-// exactly 4 digits (numeric keypad UI), so generated passwords must match.
-const generateTempPassword = () => String(Math.floor(1000 + Math.random() * 9000));
+// Every member uses the same shared password by design (org-internal,
+// public-facing data, no per-member security) — always "2026".
+const generateTempPassword = () => "2026";
 
 export const publicRegisterMember = asyncHandler(async (req, res) => {
   const {
