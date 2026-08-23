@@ -63,7 +63,7 @@ const memberSchema = new mongoose.Schema(
     },
 
     address: { type: String, required: true, trim: true },
-    nativePlace: { type: String, required: true, trim: true },
+    nativePlace: { type: String, trim: true },
     workingCountry: { type: String, required: true, trim: true },
 
     zone: { type: String, default: null },
