@@ -56,7 +56,15 @@ export const approveMemberSchema = z.object({
 export const adminCreateMemberSchema = withWorkingCountryOtherRefine(z.object(memberFormShape));
 
 export const adminUpdateMemberSchema = z
-  .object(memberFormShape)
+  .object({
+    ...memberFormShape,
+    // Admin-only: lets an admin renumber a member's membership ID (e.g. 1001, 1002).
+    membershipId: z
+      .string()
+      .trim()
+      .regex(/^\d+$/, "Membership ID must contain digits only")
+      .optional(),
+  })
   .partial()
   .refine(
     (data) => data.workingCountry !== "Other" || Boolean(data.workingCountryOther?.trim()),

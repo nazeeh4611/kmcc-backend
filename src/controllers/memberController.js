@@ -272,6 +272,16 @@ export const updateMember = asyncHandler(async (req, res) => {
     body.workingCountryOther = null;
   }
 
+  if (body.membershipId && body.membershipId !== member.membershipId) {
+    const duplicate = await Member.findOne({
+      membershipId: body.membershipId,
+      _id: { $ne: member._id },
+    });
+    if (duplicate) {
+      throw new ApiError(409, "This membership ID is already in use by another member.");
+    }
+  }
+
   if (req.file) {
     if (member.photo?.publicId) {
       await deleteFromCloudinary(member.photo.publicId).catch(() => null);
