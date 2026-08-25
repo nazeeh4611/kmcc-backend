@@ -32,20 +32,15 @@ export const downloadOwnCard = asyncHandler(async (req, res) => {
 const SELF_SERVICE_FIELDS = [
   "fullName",
   "fatherName",
-  "motherName",
   "dob",
-  "birthYear",
   "bloodGroup",
-  "phone",
+  "homeCountryNumber",
+  "workingCountryNumber",
   "email",
   "address",
-  "nativePlace",
-  "workingCountry",
   "zone",
-  "zoneOther",
-  "coordinator",
-  "coordinatorOther",
-  "mandalamCommittee",
+  "workingCountry",
+  "workingCountryOther",
 ];
 
 const pickSelfServiceFields = (source = {}) =>

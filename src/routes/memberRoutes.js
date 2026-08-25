@@ -20,7 +20,7 @@ import {
   getMyMembershipDetails,
   downloadMyMembershipCard,
 } from "../controllers/memberController.js";
-import { authenticate, requireAdmin } from "../middlewares/auth.js";
+import { authenticateAdmin, authenticateMember, requireAdminRole } from "../middlewares/auth.js";
 import validate from "../middlewares/validate.js";
 import { uploadImage } from "../middlewares/upload.js";
 import {
@@ -36,10 +36,10 @@ import {
 
 const router = Router();
 
-router.get("/me", authenticate, getMyMembershipDetails);
-router.get("/me/card", authenticate, downloadMyMembershipCard);
+router.get("/me", authenticateMember, getMyMembershipDetails);
+router.get("/me/card", authenticateMember, downloadMyMembershipCard);
 
-router.use(authenticate, requireAdmin());
+router.use(authenticateAdmin, requireAdminRole());
 
 router.get("/stats", getMemberStats);
 router.get("/pending", validate(paginationQuerySchema, "query"), getPendingMembers);
@@ -53,14 +53,14 @@ router.patch("/:id", uploadImage.single("photo"), validate(adminUpdateMemberSche
 router.post("/:id/approve", validate(approveMemberSchema), approveMember);
 router.post("/:id/reject", rejectMember);
 
-router.post("/:id/suspend", requireAdmin("super_admin", "admin"), validate(suspendMemberSchema), suspendMember);
-router.post("/:id/reactivate", requireAdmin("super_admin", "admin"), reactivateMember);
+router.post("/:id/suspend", requireAdminRole("super_admin", "admin"), validate(suspendMemberSchema), suspendMember);
+router.post("/:id/reactivate", requireAdminRole("super_admin", "admin"), reactivateMember);
 router.post("/:id/renew", validate(renewMembershipSchema), renewMembership);
-router.post("/:id/transfer", requireAdmin("super_admin", "admin"), validate(transferMembershipSchema), transferMembership);
+router.post("/:id/transfer", requireAdminRole("super_admin", "admin"), validate(transferMembershipSchema), transferMembership);
 router.post("/:id/reset-password", validate(resetMemberPasswordSchema), resetMemberPassword);
 router.get("/:id/card", generateMemberCard);
 
-router.delete("/:id", requireAdmin("super_admin", "admin"), deleteMember);
-router.post("/bulk-delete", requireAdmin("super_admin", "admin"), bulkDeleteMembers);
+router.delete("/:id", requireAdminRole("super_admin", "admin"), deleteMember);
+router.post("/bulk-delete", requireAdminRole("super_admin", "admin"), bulkDeleteMembers);
 
 export default router;

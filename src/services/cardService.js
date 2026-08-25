@@ -33,23 +33,32 @@ const formatDate = (date) =>
     ? new Date(date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
     : "—";
 
+const workingCountryLabel = (member) =>
+  member.workingCountry === "Other"
+    ? member.workingCountryOther || "Other"
+    : member.workingCountry || "—";
+
 /**
  * Renders a premium membership card as a single-page PDF (credit-card
- * proportioned, landscape) and returns it as a Buffer.
+ * proportioned, landscape) and returns it as a Buffer. Only fields that are
+ * part of the member registration form are ever rendered — no legacy or
+ * internal data.
  *
  * @param {object} member - Mongoose Member document (lean or hydrated)
  * @param {object} settings - Settings document (for logo/org name)
  */
 export const generateMembershipCardPdf = async (member, settings = {}) => {
   const [photoBuffer, qrBuffer, logoBuffer] = await Promise.all([
-    fetchImageBuffer(member.photo?.url || member.cloudinaryImage?.url),
+    fetchImageBuffer(member.photo?.url),
     generateMemberQrBuffer(member.membershipId),
     fetchImageBuffer(settings?.logo?.url),
   ]);
 
   return new Promise((resolve, reject) => {
-    // Card size: 340 x 214 pt (~ credit-card ratio, scaled up for print clarity)
-    const doc = new PDFDocument({ size: [520, 320], margin: 0 });
+    // Card size: 540 x 336 pt (~ credit-card ratio, scaled up for print clarity)
+    const W = 540;
+    const H = 336;
+    const doc = new PDFDocument({ size: [W, H], margin: 0 });
     const chunks = [];
 
     doc.on("data", (chunk) => chunks.push(chunk));
@@ -58,19 +67,21 @@ export const generateMembershipCardPdf = async (member, settings = {}) => {
 
     const PRIMARY = "#0B5D1E";
     const SECONDARY = "#14532D";
-    const ACCENT = "#84CC16";
-    const DARK = "#071A0C";
+    const ACCENT = "#D4AF37"; // KMCC gold/brass
+    const DARK = "#0F1B12";
+    const MUTED = "#5B6B60";
 
-    // Background
-    doc.rect(0, 0, 520, 320).fill("#F8FAFC");
+    // Background + subtle border
+    doc.rect(0, 0, W, H).fill("#FBFAF6");
+    doc.rect(2, 2, W - 4, H - 4).lineWidth(1.5).stroke(ACCENT);
 
     // Header band
-    doc.rect(0, 0, 520, 70).fill(PRIMARY);
-    doc.rect(0, 66, 520, 4).fill(ACCENT);
+    doc.rect(4, 4, W - 8, 62).fill(PRIMARY);
+    doc.rect(4, 62, W - 8, 4).fill(ACCENT);
 
     if (logoBuffer) {
       try {
-        doc.image(logoBuffer, 16, 12, { fit: [46, 46] });
+        doc.image(logoBuffer, 18, 15, { fit: [40, 40] });
       } catch {
         /* ignore malformed logo */
       }
@@ -79,105 +90,119 @@ export const generateMembershipCardPdf = async (member, settings = {}) => {
     doc
       .fillColor("#FFFFFF")
       .font("Helvetica-Bold")
-      .fontSize(15)
-      .text(settings?.siteName || "Global KMCC Anganganadi Panchayath", 70, 14, { width: 360 });
+      .fontSize(14)
+      .text(settings?.siteName || "Global KMCC Anganganadi Panchayath", 66, 14, {
+        width: W - 90,
+        ellipsis: true,
+      });
 
     doc
       .font("Helvetica")
-      .fontSize(9)
+      .fontSize(8.5)
       .fillColor("#E2F5E5")
-      .text("Official Membership Identity Card", 70, 36, { width: 360 });
+      .text("Official Membership Identity Card", 66, 34, { width: W - 90 });
 
     // Photo box
-    const photoX = 24;
-    const photoY = 90;
-    doc.roundedRect(photoX, photoY, 100, 120, 6).fillAndStroke("#FFFFFF", "#E2E8F0");
+    const photoX = 22;
+    const photoY = 82;
+    doc.roundedRect(photoX, photoY, 110, 128, 6).fillAndStroke("#FFFFFF", "#E2E8F0");
     if (photoBuffer) {
       try {
-        doc.image(photoBuffer, photoX + 4, photoY + 4, { fit: [92, 112], align: "center" });
+        doc.image(photoBuffer, photoX + 4, photoY + 4, { fit: [102, 120], align: "center" });
       } catch {
         /* ignore malformed photo */
       }
     }
-
-    // Name & Membership ID
-    doc
-      .fillColor(DARK)
-      .font("Helvetica-Bold")
-      .fontSize(17)
-      .text(member.fullName || "—", 140, 92, { width: 260 });
-
-    doc
-      .font("Helvetica")
-      .fontSize(10)
-      .fillColor(SECONDARY)
-      .text(`Membership ID: ${member.membershipId}`, 140, 116);
 
     const statusColor =
       member.membershipStatus === "active"
         ? "#16A34A"
         : member.membershipStatus === "expired"
         ? "#DC2626"
+        : member.membershipStatus === "suspended"
+        ? "#DC2626"
         : "#CA8A04";
-
-    doc
-      .roundedRect(140, 134, 90, 18, 9)
-      .fillAndStroke(statusColor, statusColor);
+    doc.roundedRect(photoX, photoY + 134, 110, 18, 9).fillAndStroke(statusColor, statusColor);
     doc
       .fillColor("#FFFFFF")
       .font("Helvetica-Bold")
-      .fontSize(9)
-      .text((member.membershipStatus || "pending").toUpperCase(), 140, 139, { width: 90, align: "center" });
+      .fontSize(8.5)
+      .text((member.membershipStatus || "pending").toUpperCase(), photoX, photoY + 139, {
+        width: 110,
+        align: "center",
+      });
 
-    // Details grid
+    // Name & Membership ID
+    const infoX = 148;
+    doc
+      .fillColor(DARK)
+      .font("Helvetica-Bold")
+      .fontSize(16)
+      .text(member.fullName || "—", infoX, 82, { width: W - infoX - 20, ellipsis: true });
+
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(10)
+      .fillColor(SECONDARY)
+      .text(`Membership ID: ${member.membershipId}`, infoX, 104);
+
+    // Details grid — two columns, 4 rows
     const details = [
+      ["Father's Name", member.fatherName || "—"],
+      ["Date of Birth", formatDate(member.dob)],
       ["Blood Group", member.bloodGroup || "—"],
-      ["Working Country", member.workingCountry || "—"],
-      ["Membership Type", member.membershipType?.title || "—"],
-      ["Expiry Date", formatDate(member.membershipExpiry)],
-      ["Phone", member.phone || "—"],
-      ["Emergency Contact", member.whatsapp || member.phone || "—"],
+      ["Zone", member.zone || "—"],
+      ["Home Country No.", member.homeCountryNumber || "—"],
+      ["Working Country No.", member.workingCountryNumber || "—"],
+      ["Working Country", workingCountryLabel(member)],
+      ["Email", member.email || "—"],
     ];
 
-    let dy = 162;
+    const colWidth = 168;
+    let dy = 126;
     details.forEach(([label, value], idx) => {
       const col = idx % 2;
-      const x = 140 + col * 190;
-      const y = dy + Math.floor(idx / 2) * 32;
-      doc.font("Helvetica").fontSize(8).fillColor("#64748B").text(label.toUpperCase(), x, y);
-      doc.font("Helvetica-Bold").fontSize(10).fillColor(DARK).text(value, x, y + 11, { width: 175 });
+      const x = infoX + col * colWidth;
+      const y = dy + Math.floor(idx / 2) * 30;
+      doc.font("Helvetica").fontSize(7).fillColor(MUTED).text(label.toUpperCase(), x, y);
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(9.5)
+        .fillColor(DARK)
+        .text(String(value), x, y + 10, { width: colWidth - 10, ellipsis: true });
     });
 
-    // Address footer strip
+    // Address strip (own row, full width, wraps instead of overflowing)
+    const addressY = dy + 4 * 30 + 4;
+    doc.font("Helvetica").fontSize(7).fillColor(MUTED).text("ADDRESS", infoX, addressY);
     doc
-      .font("Helvetica")
-      .fontSize(8)
-      .fillColor("#475569")
-      .text(
-        [member.houseName, member.place, member.postOffice, member.district, member.state]
-          .filter(Boolean)
-          .join(", ") || member.address || "",
-        24,
-        222,
-        { width: 300 }
-      );
+      .font("Helvetica-Bold")
+      .fontSize(8.5)
+      .fillColor(DARK)
+      .text(member.address || "—", infoX, addressY + 10, { width: W - infoX - 20, height: 24, ellipsis: true });
 
     // QR code
-    doc.roundedRect(430, 90, 72, 72, 6).fillAndStroke("#FFFFFF", "#E2E8F0");
-    doc.image(qrBuffer, 434, 94, { fit: [64, 64] });
+    const qrX = W - 92;
+    doc.roundedRect(qrX, 82, 72, 72, 6).fillAndStroke("#FFFFFF", "#E2E8F0");
+    doc.image(qrBuffer, qrX + 4, 86, { fit: [64, 64] });
     doc
       .font("Helvetica")
-      .fontSize(7)
-      .fillColor("#64748B")
-      .text("Scan to verify", 430, 164, { width: 72, align: "center" });
+      .fontSize(6.5)
+      .fillColor(MUTED)
+      .text("Scan to verify", qrX, 156, { width: 72, align: "center" });
 
     // Bottom band
-    doc.rect(0, 296, 520, 24).fill(SECONDARY);
+    doc.rect(4, H - 26, W - 8, 22).fill(SECONDARY);
     doc
       .fillColor("#FFFFFF")
       .font("Helvetica")
-      .fontSize(8)
-      .text("This card is the property of Global KMCC Anganganadi Panchayath.", 16, 303, { width: 488 });
+      .fontSize(7.5)
+      .text(
+        `This card is the property of ${settings?.siteName || "Global KMCC Anganganadi Panchayath"}. If found, please return it.`,
+        16,
+        H - 20,
+        { width: W - 32 }
+      );
 
     doc.end();
   });

@@ -35,7 +35,13 @@ const memberSchema = new mongoose.Schema(
         message: "Photo is required.",
       },
     },
-    dob: { type: Date },
+    // Date of birth — the current member-facing field. Left non-required at
+    // the schema level (validated as required in Zod for new
+    // registrations/admin-create only) so a plain .save() on a legacy
+    // member who only has `birthYear` never fails full-document validation.
+    dob: { type: Date, default: null },
+    // Legacy field, superseded by `dob`. Kept for old records; no longer
+    // collected or displayed anywhere in the UI.
     birthYear: {
       type: Number,
       min: 1900,
@@ -48,6 +54,15 @@ const memberSchema = new mongoose.Schema(
       required: true,
     },
 
+    // Two contact numbers collected on the new form. Non-required at the
+    // schema level for the same legacy-save-safety reason as `dob` — a
+    // member created before this change won't have these set yet.
+    homeCountryNumber: { type: String, trim: true, default: null },
+    workingCountryNumber: { type: String, trim: true, default: null },
+    // Legacy single contact number. No longer collected on the form —
+    // auto-derived from workingCountryNumber/homeCountryNumber on
+    // create/update so existing consumers (search, Excel export, card
+    // fallback) keep working unchanged.
     phone: {
       type: String,
       required: true,
@@ -63,10 +78,20 @@ const memberSchema = new mongoose.Schema(
     },
 
     address: { type: String, required: true, trim: true },
+    // Legacy fields, removed from the registration/admin-create form.
+    // Kept in the schema for old records only.
     nativePlace: { type: String, trim: true },
     workingCountry: { type: String, required: true, trim: true },
+    // Free-text country name captured only when workingCountry === "Other".
+    workingCountryOther: { type: String, trim: true, default: null },
 
-    zone: { type: String, default: null },
+    // Fixed 11-value list (see constants/memberOptions.js). Not constrained
+    // by a schema-level enum — legacy records may hold an older Zone
+    // ObjectId string, and a mongoose enum validator runs against the
+    // whole document on every .save(), which would break unrelated admin
+    // actions (suspend/renew/etc.) on those older records. The allowed
+    // values are enforced at the Zod layer for new registrations/edits.
+    zone: { type: String, trim: true, default: null },
     zoneOther: { type: String, trim: true, default: null },
     coordinator: { type: String, default: null },
     coordinatorOther: { type: String, trim: true, default: null },
@@ -136,7 +161,13 @@ const memberSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-memberSchema.index({ fullName: "text", phone: "text", email: "text" });
+memberSchema.index({
+  fullName: "text",
+  phone: "text",
+  email: "text",
+  homeCountryNumber: "text",
+  workingCountryNumber: "text",
+});
 memberSchema.index({ membershipExpiry: 1 });
 
 memberSchema.pre("validate", async function preValidate(next) {
@@ -147,6 +178,17 @@ memberSchema.pre("validate", async function preValidate(next) {
       return next(error);
     }
   }
+
+  // `phone` is no longer collected directly — keep it in sync with the new
+  // contact fields so legacy consumers (search, Excel export, card
+  // fallback) that still read `member.phone` keep working unchanged. Must
+  // run in pre-validate (not pre-save) since `phone` is a required field
+  // and Mongoose runs required-field checks during validation, which
+  // happens before any pre-save hook.
+  if (this.workingCountryNumber || this.homeCountryNumber) {
+    this.phone = this.workingCountryNumber || this.homeCountryNumber;
+  }
+
   next();
 });
 

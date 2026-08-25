@@ -1,6 +1,4 @@
 import Member from "../models/Member.js";
-import Zone from "../models/Zone.js";
-import Coordinator from "../models/Coordinator.js";
 import MembershipPlan from "../models/MembershipPlan.js";
 import Settings from "../models/Settings.js";
 import asyncHandler from "../utils/asyncHandler.js";
@@ -11,7 +9,6 @@ import { uploadBufferToCloudinary, deleteFromCloudinary } from "../config/cloudi
 import { generateMembershipCardPdf } from "../services/cardService.js";
 import { exportMembersToExcel } from "../services/excelService.js";
 import { sendWelcomeEmail } from "../services/emailService.js";
-import bcrypt from "bcryptjs";
 
 // Every member uses the same shared password by design (org-internal,
 // public-facing data, no per-member security) — always "2026".
@@ -19,27 +16,27 @@ const generateTempPassword = () => "2026";
 
 export const publicRegisterMember = asyncHandler(async (req, res) => {
   const {
-    zone,
-    zoneOther,
-    nativePlace,
-    coordinator,
-    coordinatorOther,
-    workingCountry,
-    mandalamCommittee,
     fullName,
     fatherName,
-    address,
+    dob,
     bloodGroup,
-    phone,
+    homeCountryNumber,
+    workingCountryNumber,
     email,
-    birthYear,
+    address,
+    zone,
+    workingCountry,
+    workingCountryOther,
   } = req.body;
 
   if (!req.file) {
     throw new ApiError(400, "Photo is required.");
   }
 
-  const duplicate = await Member.findOne({ phone, membershipStatus: { $ne: "inactive" } });
+  const duplicate = await Member.findOne({
+    $or: [{ homeCountryNumber }, { workingCountryNumber }],
+    membershipStatus: { $ne: "inactive" },
+  });
   if (duplicate) {
     throw new ApiError(409, "An application with this mobile number already exists.");
   }
@@ -56,20 +53,17 @@ export const publicRegisterMember = asyncHandler(async (req, res) => {
   }
 
   const memberData = {
-    zone: zone || null,
-    zoneOther: zoneOther || null,
-    nativePlace,
-    coordinator: coordinator || null,
-    coordinatorOther: coordinatorOther || null,
-    workingCountry,
-    mandalamCommittee: mandalamCommittee || "രൂപീകരിച്ചിട്ടില്ല",
     fullName,
     fatherName,
-    address,
+    dob,
     bloodGroup,
-    phone,
+    homeCountryNumber,
+    workingCountryNumber,
     email: email || undefined,
-    birthYear: parseInt(birthYear, 10),
+    address,
+    zone: zone || null,
+    workingCountry,
+    workingCountryOther: workingCountry === "Other" ? workingCountryOther : null,
     photo,
     membershipStatus: "pending",
   };
@@ -115,6 +109,8 @@ export const listMembers = asyncHandler(async (req, res) => {
     filter.$or = [
       { fullName: new RegExp(search, "i") },
       { phone: new RegExp(search, "i") },
+      { homeCountryNumber: new RegExp(search, "i") },
+      { workingCountryNumber: new RegExp(search, "i") },
       { email: new RegExp(search, "i") },
       { membershipId: new RegExp(search, "i") },
     ];
@@ -209,23 +205,27 @@ export const rejectMember = asyncHandler(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, null, "Application rejected and removed"));
 });
 
+// Admin "Add Member" uses the exact same field set as public registration
+// and always creates the member as "pending" — activation (with membership
+// plan selection) happens through the same approveMember action used for
+// public applications, so there's a single creation→approval pipeline.
 export const createMember = asyncHandler(async (req, res) => {
-  const body = req.body;
+  const {
+    fullName,
+    fatherName,
+    dob,
+    bloodGroup,
+    homeCountryNumber,
+    workingCountryNumber,
+    email,
+    address,
+    zone,
+    workingCountry,
+    workingCountryOther,
+  } = req.body;
 
   if (!req.file) {
     throw new ApiError(400, "Photo is required.");
-  }
-
-  let plan = null;
-  let start = null;
-  let expiry = null;
-
-  if (body.membershipType) {
-    plan = await MembershipPlan.findById(body.membershipType);
-    if (!plan || !plan.isActive) throw new ApiError(400, "Selected membership plan is invalid.");
-    start = body.membershipStart ? new Date(body.membershipStart) : new Date();
-    expiry = new Date(start);
-    expiry.setMonth(expiry.getMonth() + plan.duration);
   }
 
   const uploadResult = await uploadBufferToCloudinary(req.file.buffer, {
@@ -233,39 +233,31 @@ export const createMember = asyncHandler(async (req, res) => {
   });
   const photo = { url: uploadResult.secure_url, publicId: uploadResult.public_id };
 
-  const plainPassword = body.password || generateTempPassword();
-
   const memberData = {
-    ...body,
-    password: plainPassword,
-    membershipStatus: "active",
+    fullName,
+    fatherName,
+    dob,
+    bloodGroup,
+    homeCountryNumber,
+    workingCountryNumber,
+    email: email || undefined,
+    address,
+    zone: zone || null,
+    workingCountry,
+    workingCountryOther: workingCountry === "Other" ? workingCountryOther : null,
     photo,
+    membershipStatus: "pending",
     createdBy: req.user.id,
     updatedBy: req.user.id,
   };
 
-  if (plan) {
-    memberData.membershipType = plan._id;
-    memberData.membershipStart = start;
-    memberData.membershipExpiry = expiry;
-  } else {
-    delete memberData.membershipType;
-    delete memberData.membershipStart;
-  }
-
   const member = await Member.create(memberData);
-
-  if (member.email) {
-    sendWelcomeEmail(member.email, member, body.password ? undefined : plainPassword).catch((err) =>
-      console.error("[createMember] Welcome email failed:", err.message)
-    );
-  }
 
   return res.status(201).json(
     new ApiResponse(
       201,
-      { member: member.toSafeObject(), temporaryPassword: body.password ? undefined : plainPassword },
-      "Member created successfully"
+      { member: member.toSafeObject() },
+      "Member created and added to the pending queue. Approve it to activate the membership."
     )
   );
 });
@@ -276,9 +268,8 @@ export const updateMember = asyncHandler(async (req, res) => {
 
   const body = { ...req.body };
 
-  if (body.membershipType) {
-    const plan = await MembershipPlan.findById(body.membershipType);
-    if (!plan || !plan.isActive) throw new ApiError(400, "Selected membership plan is invalid.");
+  if (body.workingCountry && body.workingCountry !== "Other") {
+    body.workingCountryOther = null;
   }
 
   if (req.file) {

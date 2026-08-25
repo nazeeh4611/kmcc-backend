@@ -8,6 +8,7 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "seed": "node src/seed/seed.js",
+    "migrate:member-fields": "node src/scripts/migrateMemberFields.js",
     "test:e2e": "node test-e2e.mjs"
   },
   "dependencies": {

@@ -126,7 +126,6 @@ export const memberLogin = asyncHandler(async (req, res) => {
       membershipId: member.membershipId,
       fullName: member.fullName,
       email: member.email,
-      phone: member.phone,
       membershipStatus: member.membershipStatus,
       isExpired: member.isExpired,
     };
@@ -141,7 +140,7 @@ export const memberLogin = asyncHandler(async (req, res) => {
   );
 });
 
-export const refreshAccessToken = asyncHandler(async (req, res) => {
+export const refreshAdminToken = asyncHandler(async (req, res) => {
   const incomingToken = req.body?.refreshToken;
 
   if (!incomingToken) {
@@ -150,32 +149,30 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
 
   let decoded;
   try {
-    decoded = verifyRefreshToken(incomingToken);
+    decoded = verifyRefreshToken(incomingToken, "admin");
   } catch (error) {
-    console.error("[refreshAccessToken] Token verification failed:", error.message);
+    console.error("[refreshAdminToken] Token verification failed:", error.message);
     throw new ApiError(401, "Invalid or expired refresh token. Please log in again.");
   }
 
-  let account;
-  if (decoded.type === "admin") {
-    account = await Admin.findById(decoded.id);
-  } else if (decoded.type === "member") {
-    account = await Member.findById(decoded.id);
+  if (decoded.type !== "admin") {
+    throw new ApiError(401, "Invalid or expired refresh token. Please log in again.");
   }
 
-  if (!account || !account.isActive) {
+  const admin = await Admin.findById(decoded.id);
+  if (!admin || !admin.isActive) {
     throw new ApiError(401, "Account not found or deactivated.");
   }
 
-  if (account.refreshTokenVersion !== decoded.tokenVersion) {
+  if (admin.refreshTokenVersion !== decoded.tokenVersion) {
     throw new ApiError(401, "Session has been invalidated. Please log in again.");
   }
 
   const { accessToken, refreshToken } = issueTokens({
-    id: account._id.toString(),
-    role: decoded.type === "admin" ? account.role : "member",
-    type: decoded.type,
-    tokenVersion: account.refreshTokenVersion,
+    id: admin._id.toString(),
+    role: admin.role,
+    type: "admin",
+    tokenVersion: admin.refreshTokenVersion,
   });
 
   return res.status(200).json(
@@ -183,23 +180,81 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
   );
 });
 
-export const logout = asyncHandler(async (req, res) => {
-  if (req.user) {
-    const Model = req.user.type === "admin" ? Admin : Member;
-    await Model.findByIdAndUpdate(req.user.id, { $inc: { refreshTokenVersion: 1 } });
+export const refreshMemberToken = asyncHandler(async (req, res) => {
+  const incomingToken = req.body?.refreshToken;
+
+  if (!incomingToken) {
+    throw new ApiError(401, "Refresh token missing. Please log in again.");
+  }
+
+  let decoded;
+  try {
+    decoded = verifyRefreshToken(incomingToken, "member");
+  } catch (error) {
+    console.error("[refreshMemberToken] Token verification failed:", error.message);
+    throw new ApiError(401, "Invalid or expired refresh token. Please log in again.");
+  }
+
+  if (decoded.type !== "member") {
+    throw new ApiError(401, "Invalid or expired refresh token. Please log in again.");
+  }
+
+  const member = await Member.findById(decoded.id);
+  if (!member || !member.isActive) {
+    throw new ApiError(401, "Account not found or deactivated.");
+  }
+
+  if (member.refreshTokenVersion !== decoded.tokenVersion) {
+    throw new ApiError(401, "Session has been invalidated. Please log in again.");
+  }
+
+  const { accessToken, refreshToken } = issueTokens({
+    id: member._id.toString(),
+    role: "member",
+    type: "member",
+    tokenVersion: member.refreshTokenVersion,
+  });
+
+  return res.status(200).json(
+    new ApiResponse(200, { token: accessToken, refreshToken }, "Token refreshed")
+  );
+});
+
+export const adminLogout = asyncHandler(async (req, res) => {
+  if (req.user?.type === "admin") {
+    await Admin.findByIdAndUpdate(req.user.id, { $inc: { refreshTokenVersion: 1 } });
   }
 
   return res.status(200).json(new ApiResponse(200, null, "Logged out successfully"));
 });
 
-export const getCurrentUser = asyncHandler(async (req, res) => {
-  if (!req.user) {
+export const memberLogout = asyncHandler(async (req, res) => {
+  if (req.user?.type === "member") {
+    await Member.findByIdAndUpdate(req.user.id, { $inc: { refreshTokenVersion: 1 } });
+  }
+
+  return res.status(200).json(new ApiResponse(200, null, "Logged out successfully"));
+});
+
+export const getCurrentAdmin = asyncHandler(async (req, res) => {
+  if (!req.user || req.user.type !== "admin") {
     throw new ApiError(401, "Not authenticated.");
   }
 
   const safeUser = req.user.doc.toSafeObject();
   return res.status(200).json(
-    new ApiResponse(200, { user: safeUser, type: req.user.type }, "Current session")
+    new ApiResponse(200, { user: safeUser, type: "admin" }, "Current session")
+  );
+});
+
+export const getCurrentMember = asyncHandler(async (req, res) => {
+  if (!req.user || req.user.type !== "member") {
+    throw new ApiError(401, "Not authenticated.");
+  }
+
+  const safeUser = req.user.doc.toSafeObject();
+  return res.status(200).json(
+    new ApiResponse(200, { user: safeUser, type: "member" }, "Current session")
   );
 });
 

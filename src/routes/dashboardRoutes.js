@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate, requireMember, requireAdmin } from "../middlewares/auth.js";
+import { authenticateAdmin, authenticateMember, requireAdminRole } from "../middlewares/auth.js";
 import validate from "../middlewares/validate.js";
 import { uploadImage } from "../middlewares/upload.js";
 import {
@@ -19,35 +19,33 @@ import { familyMemberSchema, familyMemberUpdateSchema } from "../validators/fami
 const router = Router();
 
 // ---- Member self-service (requires member session) ----
-router.get("/card", authenticate, requireMember, downloadOwnCard);
+router.get("/card", authenticateMember, downloadOwnCard);
 
-router.get("/family", authenticate, requireMember, listFamilyMembers);
+router.get("/family", authenticateMember, listFamilyMembers);
 router.post(
   "/family",
-  authenticate,
-  requireMember,
+  authenticateMember,
   uploadImage.single("photo"),
   validate(familyMemberSchema),
   addFamilyMember
 );
 router.patch(
   "/family/:id",
-  authenticate,
-  requireMember,
+  authenticateMember,
   uploadImage.single("photo"),
   validate(familyMemberUpdateSchema),
   updateFamilyMember
 );
-router.delete("/family/:id", authenticate, requireMember, deleteFamilyMember);
+router.delete("/family/:id", authenticateMember, deleteFamilyMember);
 
-router.post("/profile-update-request", authenticate, requireMember, requestProfileUpdate);
+router.post("/profile-update-request", authenticateMember, requestProfileUpdate);
 
 // ---- Admin review queue ----
-router.get("/profile-update-requests", authenticate, requireAdmin(), listProfileUpdateRequests);
+router.get("/profile-update-requests", authenticateAdmin, requireAdminRole(), listProfileUpdateRequests);
 router.post(
   "/profile-update-requests/:id/review",
-  authenticate,
-  requireAdmin(),
+  authenticateAdmin,
+  requireAdminRole(),
   reviewProfileUpdateRequest
 );
 

@@ -1,42 +1,45 @@
 import { z } from "zod";
+import { ZONE_OPTIONS, WORKING_COUNTRY_OPTIONS, BLOOD_GROUP_OPTIONS } from "../constants/memberOptions.js";
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid ID");
 // Member passwords are 4-digit PINs — the member login form only accepts
 // exactly 4 digits, so any custom password an admin sets must match too.
 const memberPin = z.string().regex(/^\d{4}$/, "Password must be exactly 4 digits");
 
-export const publicRegisterSchema = z
-  .object({
-    zone: z.string().optional(),
-    zoneOther: z.string().trim().max(150).optional(),
-    nativePlace: z.string().trim().min(1, "Native place is required").max(150),
-    coordinator: z.string().optional(),
-    coordinatorOther: z.string().trim().max(150).optional(),
-    workingCountry: z.string().trim().min(1, "Working country is required").max(100),
-    mandalamCommittee: z.string().trim().max(150).optional(),
-    fullName: z.string().trim().min(2, "Name is required").max(150),
-    fatherName: z.string().trim().min(1, "Father's name is required").max(150),
-    address: z.string().trim().min(1, "Address is required").max(500),
-    bloodGroup: z.string().min(1, "Blood group is required"),
-    phone: z
-      .string()
-      .trim()
-      .regex(/^\+?[0-9\s\-()]{7,20}$/, "Enter a valid mobile number with country code"),
-    email: z.string().trim().email("Enter a valid email").optional().or(z.literal("")),
-    birthYear: z.coerce
-      .number()
-      .int()
-      .min(1900, "Enter a valid 4-digit year")
-      .max(new Date().getFullYear(), "Enter a valid 4-digit year"),
-  })
-  .refine((data) => data.zone || data.zoneOther, {
-    message: "Select a Panchayath/Zone or specify one",
-    path: ["zone"],
-  })
-  .refine((data) => data.coordinator || data.coordinatorOther, {
-    message: "Select a coordinator or choose Not in List",
-    path: ["coordinator"],
-  });
+const phoneNumber = z
+  .string()
+  .trim()
+  .regex(/^\+?[0-9\s\-()]{7,20}$/, "Enter a valid phone number with country code");
+
+// Shared field set for the member form — used by BOTH public registration
+// and the admin "Add Member" form so the two stay identical (mirrors
+// frontend/src/lib/validators/memberSchema.ts).
+const memberFormShape = {
+  fullName: z.string().trim().min(2, "Full name is required").max(150),
+  fatherName: z.string().trim().min(1, "Father's name is required").max(150),
+  dob: z.coerce.date({ errorMap: () => ({ message: "Enter a valid date of birth" }) }),
+  bloodGroup: z.enum(BLOOD_GROUP_OPTIONS, { errorMap: () => ({ message: "Blood group is required" }) }),
+  homeCountryNumber: phoneNumber,
+  workingCountryNumber: phoneNumber,
+  email: z.string().trim().email("Enter a valid email").optional().or(z.literal("")),
+  address: z.string().trim().min(1, "Address is required").max(500),
+  zone: z.enum(ZONE_OPTIONS, { errorMap: () => ({ message: "Select a valid zone" }) }),
+  workingCountry: z.enum(WORKING_COUNTRY_OPTIONS, {
+    errorMap: () => ({ message: "Select a valid working country" }),
+  }),
+  workingCountryOther: z.string().trim().max(100).optional(),
+};
+
+const withWorkingCountryOtherRefine = (schema) =>
+  schema.refine(
+    (data) => data.workingCountry !== "Other" || Boolean(data.workingCountryOther?.trim()),
+    {
+      message: "Specify your working country",
+      path: ["workingCountryOther"],
+    }
+  );
+
+export const publicRegisterSchema = withWorkingCountryOtherRefine(z.object(memberFormShape));
 
 export const approveMemberSchema = z.object({
   membershipType: objectId,
@@ -46,24 +49,19 @@ export const approveMemberSchema = z.object({
   unit: z.string().trim().max(150).optional(),
 });
 
+// Identical field set to publicRegisterSchema — admin "Add Member" uses the
+// exact same form/fields as public registration (both always create the
+// member as "pending"; membership plan selection only happens in the
+// separate approve step above).
+export const adminCreateMemberSchema = withWorkingCountryOtherRefine(z.object(memberFormShape));
 
-export const adminCreateMemberSchema = z.object({
-  fullName: z.string().trim().min(2).max(150),
-  phone: z.string().trim().min(7).max(20),
-  fatherName: z.string().trim().min(1).max(150),
-  address: z.string().trim().min(1).max(500),
-  bloodGroup: z.enum(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]),
-  workingCountry: z.string().trim().min(1).max(100),
-  gender: z.enum(["male", "female", "other"]).optional().default("male"),
-  zone: z.string().optional(),
-  committeeRole: z.string().trim().max(150).optional(),
-  unit: z.string().trim().max(150).optional(),
-  membershipType: objectId.optional(),
-  membershipStart: z.coerce.date().optional(),
-  password: memberPin.optional(),
-});
-
-export const adminUpdateMemberSchema = adminCreateMemberSchema.partial();
+export const adminUpdateMemberSchema = z
+  .object(memberFormShape)
+  .partial()
+  .refine(
+    (data) => data.workingCountry !== "Other" || Boolean(data.workingCountryOther?.trim()),
+    { message: "Specify your working country", path: ["workingCountryOther"] }
+  );
 
 
 

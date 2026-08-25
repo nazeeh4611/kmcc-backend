@@ -11,7 +11,12 @@ const extractToken = (req) => {
   return null;
 };
 
-export const authenticate = asyncHandler(async (req, res, next) => {
+/**
+ * Authenticates a request as an admin session. Verifies the access token
+ * against the admin-only secret — a member token will never pass this check
+ * because it was never signed with the admin secret in the first place.
+ */
+export const authenticateAdmin = asyncHandler(async (req, res, next) => {
   const token = extractToken(req);
 
   if (!token) {
@@ -20,7 +25,7 @@ export const authenticate = asyncHandler(async (req, res, next) => {
 
   let decoded;
   try {
-    decoded = verifyAccessToken(token);
+    decoded = verifyAccessToken(token, "admin");
   } catch (err) {
     if (err.name === "TokenExpiredError") {
       throw new ApiError(401, "Session expired. Please refresh your session.");
@@ -28,26 +33,97 @@ export const authenticate = asyncHandler(async (req, res, next) => {
     throw new ApiError(401, "Invalid authentication token.");
   }
 
-  if (decoded.type === "admin") {
-    const admin = await Admin.findById(decoded.id);
-    if (!admin || !admin.isActive) {
-      throw new ApiError(401, "Admin account not found or deactivated.");
-    }
-    req.user = { id: admin._id.toString(), role: admin.role, type: "admin", doc: admin };
-  } else if (decoded.type === "member") {
-    const member = await Member.findById(decoded.id);
-    if (!member || !member.isActive) {
-      throw new ApiError(401, "Member account not found or deactivated.");
-    }
-    req.user = { id: member._id.toString(), role: "member", type: "member", doc: member };
-  } else {
+  if (decoded.type !== "admin") {
     throw new ApiError(401, "Invalid token payload.");
   }
 
+  const admin = await Admin.findById(decoded.id);
+  if (!admin || !admin.isActive) {
+    throw new ApiError(401, "Admin account not found or deactivated.");
+  }
+
+  req.user = { id: admin._id.toString(), role: admin.role, type: "admin", doc: admin };
   next();
 });
 
-export const requireAdmin = (...roles) =>
+/**
+ * Authenticates a request as a member session. Verifies the access token
+ * against the member-only secret — an admin token will never pass this check.
+ */
+export const authenticateMember = asyncHandler(async (req, res, next) => {
+  const token = extractToken(req);
+
+  if (!token) {
+    throw new ApiError(401, "Authentication required. Please log in.");
+  }
+
+  let decoded;
+  try {
+    decoded = verifyAccessToken(token, "member");
+  } catch (err) {
+    if (err.name === "TokenExpiredError") {
+      throw new ApiError(401, "Session expired. Please refresh your session.");
+    }
+    throw new ApiError(401, "Invalid authentication token.");
+  }
+
+  if (decoded.type !== "member") {
+    throw new ApiError(401, "Invalid token payload.");
+  }
+
+  const member = await Member.findById(decoded.id);
+  if (!member || !member.isActive) {
+    throw new ApiError(401, "Member account not found or deactivated.");
+  }
+
+  req.user = { id: member._id.toString(), role: "member", type: "member", doc: member };
+  next();
+});
+
+/**
+ * Authenticates either an admin or a member session — used only by the
+ * shared /auth/change-password endpoint, which both account types call.
+ * Tries the admin secret first, then the member secret; each attempt is
+ * fully isolated (loads only the matching model), so this never confuses
+ * the two account types with each other.
+ */
+export const authenticateEither = asyncHandler(async (req, res, next) => {
+  const token = extractToken(req);
+
+  if (!token) {
+    throw new ApiError(401, "Authentication required. Please log in.");
+  }
+
+  try {
+    const decoded = verifyAccessToken(token, "admin");
+    if (decoded.type === "admin") {
+      const admin = await Admin.findById(decoded.id);
+      if (admin?.isActive) {
+        req.user = { id: admin._id.toString(), role: admin.role, type: "admin", doc: admin };
+        return next();
+      }
+    }
+  } catch {
+    /* not a valid admin token — try member below */
+  }
+
+  try {
+    const decoded = verifyAccessToken(token, "member");
+    if (decoded.type === "member") {
+      const member = await Member.findById(decoded.id);
+      if (member?.isActive) {
+        req.user = { id: member._id.toString(), role: "member", type: "member", doc: member };
+        return next();
+      }
+    }
+  } catch {
+    /* not a valid member token either */
+  }
+
+  throw new ApiError(401, "Invalid authentication token.");
+});
+
+export const requireAdminRole = (...roles) =>
   asyncHandler(async (req, res, next) => {
     if (!req.user || req.user.type !== "admin") {
       throw new ApiError(403, "Admin access required.");
@@ -57,10 +133,3 @@ export const requireAdmin = (...roles) =>
     }
     next();
   });
-
-export const requireMember = asyncHandler(async (req, res, next) => {
-  if (!req.user || req.user.type !== "member") {
-    throw new ApiError(403, "Member access required.");
-  }
-  next();
-});

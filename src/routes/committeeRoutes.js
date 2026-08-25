@@ -11,7 +11,7 @@ import {
 } from "../controllers/committeeController.js";
 
 import { uploadImage } from "../middlewares/upload.js";
-import { authenticate, requireAdmin } from "../middlewares/auth.js";
+import { authenticateAdmin, requireAdminRole } from "../middlewares/auth.js";
 
 const router = Router();
 
@@ -19,35 +19,35 @@ const router = Router();
 router.get("/", listCommittee);
 
 // Admin
-router.get("/admin", authenticate, requireAdmin(), listCommitteeAdmin);
+router.get("/admin", authenticateAdmin, requireAdminRole(), listCommitteeAdmin);
 
 router.post(
   "/",
-  authenticate,
-  requireAdmin(),
+  authenticateAdmin,
+  requireAdminRole(),
   uploadImage.single("photo"),
   createCommitteeMember
 );
 
 router.put(
   "/:id",
-  authenticate,
-  requireAdmin(),
+  authenticateAdmin,
+  requireAdminRole(),
   uploadImage.single("photo"),
   updateCommitteeMember
 );
 
 router.delete(
   "/:id",
-  authenticate,
-  requireAdmin(),
+  authenticateAdmin,
+  requireAdminRole(),
   deleteCommitteeMember
 );
 
 router.put(
   "/reorder",
-  authenticate,
-  requireAdmin(),
+  authenticateAdmin,
+  requireAdminRole(),
   reorderCommittee
 );
 
