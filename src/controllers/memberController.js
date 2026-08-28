@@ -14,6 +14,17 @@ import { sendWelcomeEmail } from "../services/emailService.js";
 // public-facing data, no per-member security) — always "2026".
 const generateTempPassword = () => "2026";
 
+// Only one membership plan is actually offered — the 1-year plan. Resolved
+// server-side (by duration, not a hardcoded ID, since the seeded ObjectId
+// differs per environment) so approve/renew no longer need a plan picker.
+const getDefaultMembershipPlan = async () => {
+  const plan = await MembershipPlan.findOne({ duration: 12, isActive: true }).sort({ createdAt: 1 });
+  if (!plan) {
+    throw new ApiError(500, "No active 1-year membership plan is configured.");
+  }
+  return plan;
+};
+
 export const publicRegisterMember = asyncHandler(async (req, res) => {
   const {
     fullName,
@@ -150,7 +161,7 @@ export const getMemberById = asyncHandler(async (req, res) => {
 });
 
 export const approveMember = asyncHandler(async (req, res) => {
-  const { membershipType, membershipStart, password, committeeRole, unit } = req.body;
+  const { membershipStart, password, committeeRole, unit } = req.body;
 
   const member = await Member.findById(req.params.id);
   if (!member) throw new ApiError(404, "Member not found.");
@@ -158,8 +169,7 @@ export const approveMember = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Only pending applications can be approved.");
   }
 
-  const plan = await MembershipPlan.findById(membershipType);
-  if (!plan || !plan.isActive) throw new ApiError(400, "Selected membership plan is invalid.");
+  const plan = await getDefaultMembershipPlan();
 
   const start = membershipStart ? new Date(membershipStart) : new Date();
   const expiry = new Date(start);
@@ -361,13 +371,12 @@ export const reactivateMember = asyncHandler(async (req, res) => {
 });
 
 export const renewMembership = asyncHandler(async (req, res) => {
-  const { membershipType, membershipStart } = req.body;
+  const { membershipStart } = req.body;
 
   const member = await Member.findById(req.params.id);
   if (!member) throw new ApiError(404, "Member not found.");
 
-  const plan = await MembershipPlan.findById(membershipType);
-  if (!plan || !plan.isActive) throw new ApiError(400, "Selected membership plan is invalid.");
+  const plan = await getDefaultMembershipPlan();
 
   if (member.membershipStatus === "inactive" || member.membershipType) {
     member.membershipHistory.push({
@@ -393,6 +402,40 @@ export const renewMembership = asyncHandler(async (req, res) => {
   await member.save();
 
   return res.status(200).json(new ApiResponse(200, { member: member.toSafeObject() }, "Membership renewed"));
+});
+
+// Admin-only correction for members who already have a plan but whose
+// recorded start date is wrong (e.g. it was defaulted to the approval
+// timestamp instead of their real join date). Recalculates expiry from the
+// member's existing plan duration. Unlike renewMembership, this does not
+// archive the current cycle into membershipHistory — it's a data fix, not a
+// new membership cycle.
+export const updateMembershipStartDate = asyncHandler(async (req, res) => {
+  const { membershipStart } = req.body;
+
+  const member = await Member.findById(req.params.id).populate("membershipType", "duration");
+  if (!member) throw new ApiError(404, "Member not found.");
+  if (!member.membershipType) {
+    throw new ApiError(400, "This member has no membership plan to recalculate a start date for.");
+  }
+
+  const duration = member.membershipType.duration;
+  const start = new Date(membershipStart);
+  const expiry = new Date(start);
+  expiry.setMonth(expiry.getMonth() + duration);
+
+  member.membershipStart = start;
+  member.membershipExpiry = expiry;
+  if (member.membershipStatus !== "suspended") {
+    member.membershipStatus = expiry.getTime() > Date.now() ? "active" : "expired";
+  }
+  member.updatedBy = req.user.id;
+
+  await member.save();
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, { member: member.toSafeObject() }, "Membership start date updated"));
 });
 
 export const transferMembership = asyncHandler(async (req, res) => {

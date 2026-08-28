@@ -6,7 +6,6 @@ import {
   NOMINEE_RELATION_OPTIONS,
 } from "../constants/memberOptions.js";
 
-const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid ID");
 // Member passwords are 4-digit PINs — the member login form only accepts
 // exactly 4 digits, so any custom password an admin sets must match too.
 const memberPin = z.string().regex(/^\d{4}$/, "Password must be exactly 4 digits");
@@ -50,8 +49,11 @@ const withWorkingCountryOtherRefine = (schema) =>
 
 export const publicRegisterSchema = withWorkingCountryOtherRefine(z.object(memberFormShape));
 
+// Only one membership plan is offered (the 1-year plan), so there's no
+// client-supplied membershipType anymore — approveMember resolves it
+// server-side. Admin only supplies the actual start date (defaults to now)
+// plus the optional fields below.
 export const approveMemberSchema = z.object({
-  membershipType: objectId,
   membershipStart: z.coerce.date().optional(),
   password: memberPin.optional(),
   committeeRole: z.string().trim().max(150).optional(),
@@ -83,8 +85,16 @@ export const adminUpdateMemberSchema = z
 
 
 export const renewMembershipSchema = z.object({
-  membershipType: objectId,
   membershipStart: z.coerce.date().optional(),
+});
+
+// Admin-only correction: lets an admin fix a member's recorded start date
+// (e.g. for members whose real join date predates this system, where it was
+// defaulted to the approval timestamp) and recalculates the expiry from the
+// member's existing plan duration — without touching membershipHistory the
+// way an actual renewal does.
+export const updateMembershipStartSchema = z.object({
+  membershipStart: z.coerce.date({ errorMap: () => ({ message: "Enter a valid start date" }) }),
 });
 
 export const suspendMemberSchema = z.object({

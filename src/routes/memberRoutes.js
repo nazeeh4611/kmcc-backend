@@ -12,6 +12,7 @@ import {
   suspendMember,
   reactivateMember,
   renewMembership,
+  updateMembershipStartDate,
   transferMembership,
   resetMemberPassword,
   generateMemberCard,
@@ -28,6 +29,7 @@ import {
   adminCreateMemberSchema,
   adminUpdateMemberSchema,
   renewMembershipSchema,
+  updateMembershipStartSchema,
   suspendMemberSchema,
   transferMembershipSchema,
   resetMemberPasswordSchema,
@@ -56,6 +58,7 @@ router.post("/:id/reject", rejectMember);
 router.post("/:id/suspend", requireAdminRole("super_admin", "admin"), validate(suspendMemberSchema), suspendMember);
 router.post("/:id/reactivate", requireAdminRole("super_admin", "admin"), reactivateMember);
 router.post("/:id/renew", validate(renewMembershipSchema), renewMembership);
+router.post("/:id/start-date", validate(updateMembershipStartSchema), updateMembershipStartDate);
 router.post("/:id/transfer", requireAdminRole("super_admin", "admin"), validate(transferMembershipSchema), transferMembership);
 router.post("/:id/reset-password", validate(resetMemberPasswordSchema), resetMemberPassword);
 router.get("/:id/card", generateMemberCard);
