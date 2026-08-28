@@ -30,3 +30,15 @@ export const WORKING_COUNTRY_OPTIONS = [
 ];
 
 export const BLOOD_GROUP_OPTIONS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+
+export const NOMINEE_RELATION_OPTIONS = [
+  "Father",
+  "Mother",
+  "Husband",
+  "Wife",
+  "Son",
+  "Daughter",
+  "Brother",
+  "Sister",
+  "Other",
+];

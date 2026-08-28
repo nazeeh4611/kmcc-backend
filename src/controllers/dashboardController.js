@@ -38,6 +38,8 @@ const SELF_SERVICE_FIELDS = [
   "workingCountryNumber",
   "email",
   "address",
+  "nomineeName",
+  "nomineeRelation",
   "zone",
   "workingCountry",
   "workingCountryOther",

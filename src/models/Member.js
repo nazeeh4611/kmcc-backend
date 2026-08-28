@@ -78,6 +78,9 @@ const memberSchema = new mongoose.Schema(
     },
 
     address: { type: String, required: true, trim: true },
+
+    nomineeName: { type: String, trim: true, maxlength: 150, default: null },
+    nomineeRelation: { type: String, trim: true, default: null },
     // Legacy fields, removed from the registration/admin-create form.
     // Kept in the schema for old records only.
     nativePlace: { type: String, trim: true },
