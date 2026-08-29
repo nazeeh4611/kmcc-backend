@@ -1,5 +1,14 @@
 import QRCode from "qrcode";
 import PDFDocument from "pdfkit";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Bundled fallback so the card still carries the org logo before an admin
+// uploads a custom one via Settings.
+const DEFAULT_LOGO_PATH = path.join(__dirname, "../assets/kmcc-logo.png");
 
 /**
  * Generates a QR code (PNG buffer) that encodes a verification URL for the
@@ -48,11 +57,12 @@ const workingCountryLabel = (member) =>
  * @param {object} settings - Settings document (for logo/org name)
  */
 export const generateMembershipCardPdf = async (member, settings = {}) => {
-  const [photoBuffer, qrBuffer, logoBuffer] = await Promise.all([
+  const [photoBuffer, qrBuffer, customLogoBuffer] = await Promise.all([
     fetchImageBuffer(member.photo?.url),
     generateMemberQrBuffer(member.membershipId),
     fetchImageBuffer(settings?.logo?.url),
   ]);
+  const logoBuffer = customLogoBuffer || fs.readFileSync(DEFAULT_LOGO_PATH);
 
   return new Promise((resolve, reject) => {
     // Card size: 540 x 336 pt (~ credit-card ratio, scaled up for print clarity)
