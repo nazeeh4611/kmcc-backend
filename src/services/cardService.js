@@ -156,6 +156,15 @@ export const generateMembershipCardPdf = async (member, settings = {}) => {
       .fillColor(SECONDARY)
       .text(`Membership ID: ${member.membershipId}`, infoX, 104);
 
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(8.5)
+      .fillColor(SECONDARY)
+      .text(`Valid Until: ${formatDate(member.membershipExpiry)}`, infoX, 118, {
+        width: W - infoX - 100,
+        ellipsis: true,
+      });
+
     // Details grid — two columns, 4 rows
     const details = [
       ["Father's Name", member.fatherName || "—"],
@@ -169,7 +178,7 @@ export const generateMembershipCardPdf = async (member, settings = {}) => {
     ];
 
     const colWidth = 168;
-    let dy = 126;
+    let dy = 138;
     details.forEach(([label, value], idx) => {
       const col = idx % 2;
       const x = infoX + col * colWidth;

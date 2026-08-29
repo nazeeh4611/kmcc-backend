@@ -27,8 +27,11 @@ const getDefaultMembershipPlan = async () => {
 
 // All memberships expire on this single fixed date regardless of individual
 // start date, so every member's cycle renews together at year end instead of
-// on their personal anniversary.
-const FIXED_MEMBERSHIP_EXPIRY = new Date("2026-12-31T23:59:59.999Z");
+// on their personal anniversary. Anchored to noon UTC (not end-of-day) so it
+// still reads as "31 Dec 2026" in every timezone members/admins actually use
+// (India, Qatar, Saudi, UAE — all ahead of UTC) instead of rolling over to
+// 1 Jan when a browser formats it in local time.
+const FIXED_MEMBERSHIP_EXPIRY = new Date("2026-12-31T12:00:00.000Z");
 
 export const publicRegisterMember = asyncHandler(async (req, res) => {
   const {
