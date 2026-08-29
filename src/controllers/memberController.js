@@ -25,6 +25,11 @@ const getDefaultMembershipPlan = async () => {
   return plan;
 };
 
+// All memberships expire on this single fixed date regardless of individual
+// start date, so every member's cycle renews together at year end instead of
+// on their personal anniversary.
+const FIXED_MEMBERSHIP_EXPIRY = new Date("2026-12-31T23:59:59.999Z");
+
 export const publicRegisterMember = asyncHandler(async (req, res) => {
   const {
     fullName,
@@ -172,8 +177,7 @@ export const approveMember = asyncHandler(async (req, res) => {
   const plan = await getDefaultMembershipPlan();
 
   const start = membershipStart ? new Date(membershipStart) : new Date();
-  const expiry = new Date(start);
-  expiry.setMonth(expiry.getMonth() + plan.duration);
+  const expiry = FIXED_MEMBERSHIP_EXPIRY;
 
   const plainPassword = password || generateTempPassword();
 
@@ -388,8 +392,7 @@ export const renewMembership = asyncHandler(async (req, res) => {
   }
 
   const start = membershipStart ? new Date(membershipStart) : new Date();
-  const expiry = new Date(start);
-  expiry.setMonth(expiry.getMonth() + plan.duration);
+  const expiry = FIXED_MEMBERSHIP_EXPIRY;
 
   member.membershipType = plan._id;
   member.membershipStart = start;
@@ -406,10 +409,10 @@ export const renewMembership = asyncHandler(async (req, res) => {
 
 // Admin-only correction for members who already have a plan but whose
 // recorded start date is wrong (e.g. it was defaulted to the approval
-// timestamp instead of their real join date). Recalculates expiry from the
-// member's existing plan duration. Unlike renewMembership, this does not
-// archive the current cycle into membershipHistory — it's a data fix, not a
-// new membership cycle.
+// timestamp instead of their real join date). Expiry stays pinned to
+// FIXED_MEMBERSHIP_EXPIRY regardless — only the recorded start date changes.
+// Unlike renewMembership, this does not archive the current cycle into
+// membershipHistory — it's a data fix, not a new membership cycle.
 export const updateMembershipStartDate = asyncHandler(async (req, res) => {
   const { membershipStart } = req.body;
 
@@ -419,10 +422,8 @@ export const updateMembershipStartDate = asyncHandler(async (req, res) => {
     throw new ApiError(400, "This member has no membership plan to recalculate a start date for.");
   }
 
-  const duration = member.membershipType.duration;
   const start = new Date(membershipStart);
-  const expiry = new Date(start);
-  expiry.setMonth(expiry.getMonth() + duration);
+  const expiry = FIXED_MEMBERSHIP_EXPIRY;
 
   member.membershipStart = start;
   member.membershipExpiry = expiry;
