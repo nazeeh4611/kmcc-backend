@@ -7,7 +7,7 @@ export const ZONE_OPTIONS = [
   "Pavukkonam",
   "kottakulam",
   "mele Pathamkulam",
-  "thaze Pathamkulam",
+  "Thaze Pathamkulam",
   "palakkod",
   "kundadi",
   "Panamanna",
