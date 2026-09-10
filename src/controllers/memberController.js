@@ -392,7 +392,10 @@ export const reactivateMember = asyncHandler(async (req, res) => {
 // Renewing never touches membershipStart — it stays exactly as it is
 // (whatever it was set to at approval, or by a later manual "Correct Start
 // Date" fix) until an admin explicitly changes it via
-// updateMembershipStartDate below. Only the expiry/plan/status roll forward.
+// updateMembershipStartDate below. Only the plan/status roll forward, and
+// expiry advances one year at a time (31 Dec 2027 -> 31 Dec 2028 -> ...)
+// from whatever the member's current expiry is — never reset back to the
+// original FIXED_MEMBERSHIP_EXPIRY.
 export const renewMembership = asyncHandler(async (req, res) => {
   const member = await Member.findById(req.params.id);
   if (!member) throw new ApiError(404, "Member not found.");
@@ -408,8 +411,13 @@ export const renewMembership = asyncHandler(async (req, res) => {
     });
   }
 
+  const currentExpiryYear = member.membershipExpiry
+    ? new Date(member.membershipExpiry).getUTCFullYear()
+    : FIXED_MEMBERSHIP_EXPIRY.getUTCFullYear();
+  const nextExpiry = new Date(Date.UTC(currentExpiryYear + 1, 11, 31, 12, 0, 0));
+
   member.membershipType = plan._id;
-  member.membershipExpiry = FIXED_MEMBERSHIP_EXPIRY;
+  member.membershipExpiry = nextExpiry;
   member.membershipStatus = "active";
   member.isExpired = false;
   member.graceEndsAt = null;
@@ -422,8 +430,10 @@ export const renewMembership = asyncHandler(async (req, res) => {
 
 // Admin-only correction for members who already have a plan but whose
 // recorded start date is wrong (e.g. it was defaulted to the approval
-// timestamp instead of their real join date). Expiry stays pinned to
-// FIXED_MEMBERSHIP_EXPIRY regardless — only the recorded start date changes.
+// timestamp instead of their real join date). Expiry is left exactly as it
+// already was — only the recorded start date changes. (It must not be reset
+// to FIXED_MEMBERSHIP_EXPIRY here: a member who has since been renewed one
+// or more years forward would otherwise have that progress wiped out.)
 // Unlike renewMembership, this does not archive the current cycle into
 // membershipHistory — it's a data fix, not a new membership cycle.
 export const updateMembershipStartDate = asyncHandler(async (req, res) => {
@@ -436,7 +446,7 @@ export const updateMembershipStartDate = asyncHandler(async (req, res) => {
   }
 
   const start = new Date(membershipStart);
-  const expiry = FIXED_MEMBERSHIP_EXPIRY;
+  const expiry = member.membershipExpiry || FIXED_MEMBERSHIP_EXPIRY;
 
   member.membershipStart = start;
   member.membershipExpiry = expiry;
