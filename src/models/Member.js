@@ -225,6 +225,37 @@ memberSchema.pre("save", async function preSave(next) {
   next();
 });
 
+// Wraps document creation with a retry so a race between two concurrent
+// registrations can never persist two members with the same membershipId.
+// generateMembershipId() picks the smallest unused number by scanning the
+// collection, so two requests arriving at nearly the same time can compute
+// the same candidate; the schema's unique index then rejects the second
+// save with a duplicate-key error. On that specific failure we retry with a
+// brand-new (unsaved) document — its pre-validate hook re-runs
+// generateMembershipId() against the now-updated collection and gets a
+// fresh, genuinely free number — instead of letting the raw duplicate-key
+// error reach the member as a confusing failure.
+memberSchema.statics.createWithUniqueId = async function createWithUniqueId(data, options = {}) {
+  const MAX_ATTEMPTS = 5;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const doc = new this(data);
+      await doc.save(options);
+      return doc;
+    } catch (error) {
+      const isDuplicateMembershipId =
+        error?.code === 11000 && Object.prototype.hasOwnProperty.call(error.keyPattern || {}, "membershipId");
+
+      if (isDuplicateMembershipId && attempt < MAX_ATTEMPTS) {
+        continue;
+      }
+
+      throw error;
+    }
+  }
+};
+
 memberSchema.methods.comparePassword = async function comparePassword(candidate) {
   if (!candidate || !this.password) {
     return false;

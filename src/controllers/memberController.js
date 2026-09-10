@@ -93,8 +93,15 @@ export const publicRegisterMember = asyncHandler(async (req, res) => {
 
   let member;
   try {
-    member = await Member.create(memberData);
+    member = await Member.createWithUniqueId(memberData);
   } catch (dbError) {
+    // Let validation and duplicate-key errors through to the global error
+    // handler, which turns them into a plain-English, field-level message —
+    // swallowing them here as a generic "try again" left members retrying a
+    // form that would fail the same way every time, with no idea why.
+    if (dbError.name === "ValidationError" || dbError.code === 11000) {
+      throw dbError;
+    }
     console.error("[publicRegisterMember] Member creation failed:", dbError.message);
     throw new ApiError(500, "Could not submit your application. Please try again.");
   }
@@ -276,7 +283,7 @@ export const createMember = asyncHandler(async (req, res) => {
     updatedBy: req.user.id,
   };
 
-  const member = await Member.create(memberData);
+  const member = await Member.createWithUniqueId(memberData);
 
   return res.status(201).json(
     new ApiResponse(
