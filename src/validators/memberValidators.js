@@ -54,7 +54,6 @@ export const publicRegisterSchema = withWorkingCountryOtherRefine(z.object(membe
 // server-side. Admin only supplies the actual start date (defaults to now)
 // plus the optional fields below.
 export const approveMemberSchema = z.object({
-  membershipStart: z.coerce.date().optional(),
   password: memberPin.optional(),
   committeeRole: z.string().trim().max(150).optional(),
   unit: z.string().trim().max(150).optional(),

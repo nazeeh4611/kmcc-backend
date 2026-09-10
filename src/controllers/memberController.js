@@ -33,6 +33,13 @@ const getDefaultMembershipPlan = async () => {
 // 1 Jan when a browser formats it in local time.
 const FIXED_MEMBERSHIP_EXPIRY = new Date("2027-12-31T12:00:00.000Z");
 
+// Every member's cycle starts on this same fixed date too, regardless of
+// when they actually applied or were approved — mirrors
+// FIXED_MEMBERSHIP_EXPIRY above so the whole org shares one Jan–Dec 2027
+// membership year. Same noon-UTC anchor to avoid rolling back to
+// 31 Dec 2026 when a browser formats it in a timezone behind UTC.
+const FIXED_MEMBERSHIP_START = new Date("2027-01-01T12:00:00.000Z");
+
 export const publicRegisterMember = asyncHandler(async (req, res) => {
   const {
     fullName,
@@ -176,7 +183,7 @@ export const getMemberById = asyncHandler(async (req, res) => {
 });
 
 export const approveMember = asyncHandler(async (req, res) => {
-  const { membershipStart, password, committeeRole, unit } = req.body;
+  const { password, committeeRole, unit } = req.body;
 
   const member = await Member.findById(req.params.id);
   if (!member) throw new ApiError(404, "Member not found.");
@@ -186,15 +193,12 @@ export const approveMember = asyncHandler(async (req, res) => {
 
   const plan = await getDefaultMembershipPlan();
 
-  const start = membershipStart ? new Date(membershipStart) : new Date();
-  const expiry = FIXED_MEMBERSHIP_EXPIRY;
-
   const plainPassword = password || generateTempPassword();
 
   member.password = plainPassword;
   member.membershipType = plan._id;
-  member.membershipStart = start;
-  member.membershipExpiry = expiry;
+  member.membershipStart = FIXED_MEMBERSHIP_START;
+  member.membershipExpiry = FIXED_MEMBERSHIP_EXPIRY;
   member.membershipStatus = "active";
   member.committeeRole = committeeRole || member.committeeRole;
   member.unit = unit || member.unit;
