@@ -1,7 +1,8 @@
-// One-time backfill: aligns every already-approved member onto the single
-// shared Jan–Dec 2027 membership cycle (see FIXED_MEMBERSHIP_START /
-// FIXED_MEMBERSHIP_EXPIRY in controllers/memberController.js, which apply
-// this same period to every new approval going forward).
+// One-time backfill: aligns every already-approved member onto the shared
+// membership period — start pinned to 1 Jan 2021, expiry to 31 Dec 2027
+// (see FIXED_MEMBERSHIP_START / FIXED_MEMBERSHIP_EXPIRY in
+// controllers/memberController.js, which apply this same period to every
+// new approval going forward).
 //
 // Only touches members that already have a membershipStart set (i.e. have
 // been approved at least once) — pending applicants get the fixed period
@@ -15,7 +16,7 @@ import mongoose from "mongoose";
 import { connectDB, disconnectDB } from "../config/db.js";
 import Member from "../models/Member.js";
 
-const FIXED_MEMBERSHIP_START = new Date("2027-01-01T12:00:00.000Z");
+const FIXED_MEMBERSHIP_START = new Date("2021-01-01T12:00:00.000Z");
 const FIXED_MEMBERSHIP_EXPIRY = new Date("2027-12-31T12:00:00.000Z");
 
 const run = async () => {
@@ -38,7 +39,7 @@ const run = async () => {
     }
   );
   console.log(
-    `[setFixedMembershipPeriod] Set membershipStart=2027-01-01 / membershipExpiry=2027-12-31 on ${result.modifiedCount} member(s).`
+    `[setFixedMembershipPeriod] Set membershipStart=2021-01-01 / membershipExpiry=2027-12-31 on ${result.modifiedCount} member(s).`
   );
 
   await disconnectDB();

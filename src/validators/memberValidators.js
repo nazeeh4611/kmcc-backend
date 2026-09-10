@@ -83,9 +83,7 @@ export const adminUpdateMemberSchema = z
 
 
 
-export const renewMembershipSchema = z.object({
-  membershipStart: z.coerce.date().optional(),
-});
+export const renewMembershipSchema = z.object({});
 
 // Admin-only correction: lets an admin fix a member's recorded start date
 // (e.g. for members whose real join date predates this system, where it was
