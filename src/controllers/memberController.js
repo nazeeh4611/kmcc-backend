@@ -263,6 +263,29 @@ export const createMember = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Photo is required.");
   }
 
+  // Reject before touching Cloudinary if either contact number (the GCC /
+  // working-country number included) already belongs to another member, so
+  // the admin gets a clear reason instead of a silently-created duplicate.
+  // Mirrors the check publicRegisterMember runs on the public form.
+  const duplicate = await Member.findOne({
+    $or: [{ homeCountryNumber }, { workingCountryNumber }],
+    membershipStatus: { $ne: "inactive" },
+  });
+  if (duplicate) {
+    const collisions = [];
+    if (workingCountryNumber && duplicate.workingCountryNumber === workingCountryNumber) {
+      collisions.push("GCC (working country) number");
+    }
+    if (homeCountryNumber && duplicate.homeCountryNumber === homeCountryNumber) {
+      collisions.push("home country number");
+    }
+    const fieldText = collisions.length ? collisions.join(" and ") : "contact number";
+    throw new ApiError(
+      409,
+      `This ${fieldText} is already registered to another member — ${duplicate.fullName} (${duplicate.membershipId}). A member cannot be added with a duplicate number.`
+    );
+  }
+
   const uploadResult = await uploadBufferToCloudinary(req.file.buffer, {
     folder: "kmcc_panchayath/members",
   });
@@ -316,6 +339,33 @@ export const updateMember = asyncHandler(async (req, res) => {
     });
     if (duplicate) {
       throw new ApiError(409, "This membership ID is already in use by another member.");
+    }
+  }
+
+  const nextHomeCountryNumber = body.homeCountryNumber ?? member.homeCountryNumber;
+  const nextWorkingCountryNumber = body.workingCountryNumber ?? member.workingCountryNumber;
+  const contactNumbersChanged =
+    nextHomeCountryNumber !== member.homeCountryNumber || nextWorkingCountryNumber !== member.workingCountryNumber;
+
+  if (contactNumbersChanged) {
+    const numberDuplicate = await Member.findOne({
+      $or: [{ homeCountryNumber: nextHomeCountryNumber }, { workingCountryNumber: nextWorkingCountryNumber }],
+      membershipStatus: { $ne: "inactive" },
+      _id: { $ne: member._id },
+    });
+    if (numberDuplicate) {
+      const collisions = [];
+      if (nextWorkingCountryNumber && numberDuplicate.workingCountryNumber === nextWorkingCountryNumber) {
+        collisions.push("GCC (working country) number");
+      }
+      if (nextHomeCountryNumber && numberDuplicate.homeCountryNumber === nextHomeCountryNumber) {
+        collisions.push("home country number");
+      }
+      const fieldText = collisions.length ? collisions.join(" and ") : "contact number";
+      throw new ApiError(
+        409,
+        `This ${fieldText} is already registered to another member — ${numberDuplicate.fullName} (${numberDuplicate.membershipId}). A member cannot be updated with a duplicate number.`
+      );
     }
   }
 
