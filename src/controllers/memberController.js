@@ -41,6 +41,70 @@ const FIXED_MEMBERSHIP_EXPIRY = new Date("2027-12-31T12:00:00.000Z");
 // when a browser formats it in a timezone behind UTC.
 const FIXED_MEMBERSHIP_START = new Date("2021-01-01T12:00:00.000Z");
 
+// Digits-only comparison so "+971 50 123 4567", "971-50-123-4567", and
+// "00971501234567" are all recognized as the same number — an exact-string
+// match missed these because admins/members rarely retype a number with
+// identical spacing/punctuation every time.
+const normalizeNumber = (value) => (value || "").replace(/\D/g, "");
+
+// Shared by publicRegisterMember, createMember and updateMember. Finds
+// another (non-inactive) member already holding the given home-country or
+// GCC/working-country number. Loads candidates leanly and compares
+// normalized digits in JS since the digits-only match can't be expressed as
+// a plain Mongo equality query — same full-scan tradeoff generateMembershipId
+// already makes, acceptable at this collection size.
+const findContactNumberDuplicate = async ({ homeCountryNumber, workingCountryNumber, excludeId }) => {
+  const homeNorm = normalizeNumber(homeCountryNumber);
+  const workNorm = normalizeNumber(workingCountryNumber);
+  if (!homeNorm && !workNorm) return null;
+
+  const query = { membershipStatus: { $ne: "inactive" } };
+  if (excludeId) query._id = { $ne: excludeId };
+
+  const candidates = await Member.find(query, {
+    homeCountryNumber: 1,
+    workingCountryNumber: 1,
+    fullName: 1,
+    membershipId: 1,
+  }).lean();
+
+  for (const candidate of candidates) {
+    const candidateHomeNorm = normalizeNumber(candidate.homeCountryNumber);
+    const candidateWorkNorm = normalizeNumber(candidate.workingCountryNumber);
+
+    const collisions = [];
+    if (workNorm && candidateWorkNorm === workNorm) collisions.push("workingCountryNumber");
+    if (homeNorm && candidateHomeNorm === homeNorm) collisions.push("homeCountryNumber");
+
+    if (collisions.length) {
+      return { candidate, collisions };
+    }
+  }
+
+  return null;
+};
+
+const CONTACT_FIELD_LABEL = {
+  workingCountryNumber: "GCC (working country) number",
+  homeCountryNumber: "home country number",
+};
+
+const rejectIfDuplicateContactNumber = async ({ homeCountryNumber, workingCountryNumber, excludeId }, verb) => {
+  const duplicate = await findContactNumberDuplicate({ homeCountryNumber, workingCountryNumber, excludeId });
+  if (!duplicate) return;
+
+  const { candidate, collisions } = duplicate;
+  const fieldText = collisions.map((f) => CONTACT_FIELD_LABEL[f]).join(" and ");
+  throw new ApiError(
+    409,
+    `This ${fieldText} is already registered to another member — ${candidate.fullName} (${candidate.membershipId}). A member cannot be ${verb} with a duplicate number.`,
+    collisions.map((field) => ({
+      field,
+      message: `This number is already registered to another member (${candidate.fullName}, ${candidate.membershipId}).`,
+    }))
+  );
+};
+
 export const publicRegisterMember = asyncHandler(async (req, res) => {
   const {
     fullName,
@@ -62,13 +126,7 @@ export const publicRegisterMember = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Photo is required.");
   }
 
-  const duplicate = await Member.findOne({
-    $or: [{ homeCountryNumber }, { workingCountryNumber }],
-    membershipStatus: { $ne: "inactive" },
-  });
-  if (duplicate) {
-    throw new ApiError(409, "An application with this mobile number already exists.");
-  }
+  await rejectIfDuplicateContactNumber({ homeCountryNumber, workingCountryNumber }, "registered");
 
   let photo;
   try {
@@ -267,24 +325,7 @@ export const createMember = asyncHandler(async (req, res) => {
   // working-country number included) already belongs to another member, so
   // the admin gets a clear reason instead of a silently-created duplicate.
   // Mirrors the check publicRegisterMember runs on the public form.
-  const duplicate = await Member.findOne({
-    $or: [{ homeCountryNumber }, { workingCountryNumber }],
-    membershipStatus: { $ne: "inactive" },
-  });
-  if (duplicate) {
-    const collisions = [];
-    if (workingCountryNumber && duplicate.workingCountryNumber === workingCountryNumber) {
-      collisions.push("GCC (working country) number");
-    }
-    if (homeCountryNumber && duplicate.homeCountryNumber === homeCountryNumber) {
-      collisions.push("home country number");
-    }
-    const fieldText = collisions.length ? collisions.join(" and ") : "contact number";
-    throw new ApiError(
-      409,
-      `This ${fieldText} is already registered to another member — ${duplicate.fullName} (${duplicate.membershipId}). A member cannot be added with a duplicate number.`
-    );
-  }
+  await rejectIfDuplicateContactNumber({ homeCountryNumber, workingCountryNumber }, "added");
 
   const uploadResult = await uploadBufferToCloudinary(req.file.buffer, {
     folder: "kmcc_panchayath/members",
@@ -345,28 +386,14 @@ export const updateMember = asyncHandler(async (req, res) => {
   const nextHomeCountryNumber = body.homeCountryNumber ?? member.homeCountryNumber;
   const nextWorkingCountryNumber = body.workingCountryNumber ?? member.workingCountryNumber;
   const contactNumbersChanged =
-    nextHomeCountryNumber !== member.homeCountryNumber || nextWorkingCountryNumber !== member.workingCountryNumber;
+    normalizeNumber(nextHomeCountryNumber) !== normalizeNumber(member.homeCountryNumber) ||
+    normalizeNumber(nextWorkingCountryNumber) !== normalizeNumber(member.workingCountryNumber);
 
   if (contactNumbersChanged) {
-    const numberDuplicate = await Member.findOne({
-      $or: [{ homeCountryNumber: nextHomeCountryNumber }, { workingCountryNumber: nextWorkingCountryNumber }],
-      membershipStatus: { $ne: "inactive" },
-      _id: { $ne: member._id },
-    });
-    if (numberDuplicate) {
-      const collisions = [];
-      if (nextWorkingCountryNumber && numberDuplicate.workingCountryNumber === nextWorkingCountryNumber) {
-        collisions.push("GCC (working country) number");
-      }
-      if (nextHomeCountryNumber && numberDuplicate.homeCountryNumber === nextHomeCountryNumber) {
-        collisions.push("home country number");
-      }
-      const fieldText = collisions.length ? collisions.join(" and ") : "contact number";
-      throw new ApiError(
-        409,
-        `This ${fieldText} is already registered to another member — ${numberDuplicate.fullName} (${numberDuplicate.membershipId}). A member cannot be updated with a duplicate number.`
-      );
-    }
+    await rejectIfDuplicateContactNumber(
+      { homeCountryNumber: nextHomeCountryNumber, workingCountryNumber: nextWorkingCountryNumber, excludeId: member._id },
+      "updated"
+    );
   }
 
   if (req.file) {
