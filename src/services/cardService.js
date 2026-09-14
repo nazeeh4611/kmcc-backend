@@ -97,20 +97,58 @@ export const generateMembershipCardPdf = async (member, settings = {}) => {
       }
     }
 
-    doc
-      .fillColor("#FFFFFF")
-      .font("Helvetica-Bold")
-      .fontSize(14)
-      .text(settings?.siteName || "Global KMCC Anganganadi Panchayath", 66, 14, {
-        width: W - 90,
-        ellipsis: true,
-      });
+    const siteName = settings?.siteName || "Global KMCC Anganganadi Panchayath";
+    const brandMatch = siteName.match(/^(global\s*kmcc)(.*)$/i);
+    const headerTextMaxWidth = W - 90;
+
+    if (brandMatch) {
+      const [, brandRaw, restRaw] = brandMatch;
+      const brand = brandRaw.toUpperCase();
+      let rest = restRaw.trim();
+
+      doc.font("Helvetica-Bold").fontSize(16.5);
+      const brandWidth = doc.widthOfString(`${brand}  `, { characterSpacing: 0.4 });
+      doc.font("Helvetica-Bold").fontSize(11.5);
+      let restWidth = rest ? doc.widthOfString(rest) : 0;
+
+      // Truncate the trailing org name if a custom, longer site name would
+      // otherwise spill past the header band into the photo/QR areas.
+      while (rest && brandWidth + restWidth > headerTextMaxWidth) {
+        rest = rest.slice(0, -1);
+        restWidth = doc.widthOfString(`${rest}…`);
+      }
+      if (restRaw.trim() && rest.length < restRaw.trim().length) {
+        rest = `${rest}…`;
+      }
+
+      doc
+        .fillColor("#FFFFFF")
+        .font("Helvetica-Bold")
+        .fontSize(16.5)
+        .text(`${brand}  `, 66, 12, {
+          continued: Boolean(rest),
+          lineBreak: false,
+          characterSpacing: 0.4,
+        });
+      if (rest) {
+        doc
+          .font("Helvetica-Bold")
+          .fontSize(11.5)
+          .text(rest, { lineBreak: false });
+      }
+    } else {
+      doc
+        .fillColor("#FFFFFF")
+        .font("Helvetica-Bold")
+        .fontSize(14)
+        .text(siteName, 66, 14, { width: W - 90, ellipsis: true });
+    }
 
     doc
       .font("Helvetica")
       .fontSize(8.5)
       .fillColor("#E2F5E5")
-      .text("Official Membership Identity Card", 66, 34, { width: W - 90 });
+      .text("Official Membership Identity Card", 66, 36, { width: W - 90 });
 
     // Photo box
     const photoX = 22;
