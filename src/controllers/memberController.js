@@ -39,7 +39,7 @@ const FIXED_MEMBERSHIP_EXPIRY = new Date("2027-12-31T12:00:00.000Z");
 // admin's explicit "Correct Start Date" action (updateMembershipStartDate).
 // Same noon-UTC anchor as FIXED_MEMBERSHIP_EXPIRY to avoid rolling back a day
 // when a browser formats it in a timezone behind UTC.
-const FIXED_MEMBERSHIP_START = new Date("2021-01-01T12:00:00.000Z");
+const FIXED_MEMBERSHIP_START = new Date("2027-01-01T12:00:00.000Z");
 
 // Digits-only comparison so "+971 50 123 4567", "971-50-123-4567", and
 // "00971501234567" are all recognized as the same number — an exact-string
