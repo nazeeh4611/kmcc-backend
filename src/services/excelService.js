@@ -1,5 +1,15 @@
 import ExcelJS from "exceljs";
 
+// Zero-padded DD/MM/YYYY — toLocaleDateString("en-IN") renders unpadded
+// (e.g. "1/1/2027"), which looks unprofessional in the exported sheet.
+const formatDate = (date) => {
+  if (!date) return "";
+  const d = new Date(date);
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  return `${day}/${month}/${d.getFullYear()}`;
+};
+
 const COLUMNS = [
   { header: "Membership ID", key: "membershipId", width: 20 },
   { header: "Full Name", key: "fullName", width: 25 },
@@ -36,7 +46,7 @@ export const exportMembersToExcel = async (members) => {
       membershipId: m.membershipId,
       fullName: m.fullName,
       fatherName: m.fatherName || "",
-      dob: m.dob ? new Date(m.dob).toLocaleDateString("en-IN") : "",
+      dob: formatDate(m.dob),
       homeCountryNumber: m.homeCountryNumber || "",
       workingCountryNumber: m.workingCountryNumber || "",
       email: m.email || "",
@@ -46,10 +56,10 @@ export const exportMembersToExcel = async (members) => {
       zone: m.zone || "",
       workingCountry: m.workingCountry === "Other" ? m.workingCountryOther || "Other" : m.workingCountry || "",
       membershipStatus: m.membershipStatus,
-      membershipStart: m.membershipStart ? new Date(m.membershipStart).toLocaleDateString("en-IN") : "",
-      membershipExpiry: m.membershipExpiry ? new Date(m.membershipExpiry).toLocaleDateString("en-IN") : "",
+      membershipStart: formatDate(m.membershipStart),
+      membershipExpiry: formatDate(m.membershipExpiry),
       daysRemaining: m.daysRemaining,
-      joinedDate: m.joinedDate ? new Date(m.joinedDate).toLocaleDateString("en-IN") : "",
+      joinedDate: formatDate(m.joinedDate),
     });
   });
 

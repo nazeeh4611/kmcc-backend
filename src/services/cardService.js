@@ -247,16 +247,6 @@ export const generateMembershipCardPdf = async (member, settings = {}) => {
       .fontSize(6.5)
       .fillColor(MUTED)
       .text("Scan to verify", qrX, 156, { width: 72, align: "center" });
-    doc
-      .font("Helvetica-Bold")
-      .fontSize(6.5)
-      .fillColor(SECONDARY)
-      .text(
-        `${formatDate(member.membershipStart)} – ${formatDate(member.membershipExpiry)}`,
-        qrX,
-        167,
-        { width: 72, align: "center" }
-      );
 
     // Bottom band
     doc.rect(4, H - 26, W - 8, 22).fill(SECONDARY);
