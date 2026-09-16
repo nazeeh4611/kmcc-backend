@@ -26,6 +26,7 @@ export const WORKING_COUNTRY_OPTIONS = [
   "London",
   "America",
   "Canada",
+  "Mozambique",
   "Other",
 ];
 
