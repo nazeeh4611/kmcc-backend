@@ -5,7 +5,6 @@ import ApiResponse from "../utils/ApiResponse.js";
 import { uploadBufferToCloudinary, deleteFromCloudinary } from "../config/cloudinary.js";
 
 const TITLE_MAX = 120;
-const DESCRIPTION_MAX = 2000;
 const EDITABLE = ["title", "description", "button", "link", "priority", "isActive"];
 const FOLDER = "kmcc_panchayath/carousel";
 
@@ -29,9 +28,7 @@ const validateFields = (fields, { requireTitle }) => {
   if (fields.description !== undefined) {
     // Multipart encoding turns \n into \r\n; normalize so the count matches the UI.
     fields.description = String(fields.description).replace(/\r\n/g, "\n").trim();
-    if (fields.description.length > DESCRIPTION_MAX) {
-      throw new ApiError(400, `Description must be ${DESCRIPTION_MAX} characters or fewer.`);
-    }
+  
   }
 
   if (fields.priority !== undefined) {
