@@ -13,7 +13,7 @@ const committeeSchema = new mongoose.Schema(
     year: { type: Number, required: true, default: () => new Date().getFullYear() },
     type: {
       type: String,
-      enum: ["executive", "secretariat", "it_team", "womens_wing", "youth_wing"],
+      enum: ["executive", "secretariat", "it_team", "advisory_committee", "youth_wing"],
       required: true,
     },
     phone: { type: String, trim: true },

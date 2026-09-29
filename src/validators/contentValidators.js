@@ -5,7 +5,7 @@ export const committeeSchema = z.object({
   designation: z.string().trim().min(2).max(150),
   priority: z.coerce.number().int().optional(),
   year: z.coerce.number().int().optional(),
-  type: z.enum(["executive", "secretariat", "it_team", "womens_wing", "youth_wing"]),
+  type: z.enum(["executive", "secretariat", "it_team", "advisory_committee", "youth_wing"]),
   phone: z.string().trim().max(20).optional(),
   email: z.string().trim().email().optional().or(z.literal("")),
 });

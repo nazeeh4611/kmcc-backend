@@ -99,7 +99,7 @@ Cloudinary handling image/file replacement (deleting the old asset when a
 new one is uploaded).
 
 - **Committee** (`/api/committee`) — grouped by `type`
-  (executive/secretariat/it_team/womens_wing/youth_wing) and `year`, with a
+  (executive/secretariat/it_team/advisory_committee/youth_wing) and `year`, with a
   `PATCH /reorder` endpoint for drag-and-drop priority ordering.
 - **Posters** (`/api/posters`) — `status` (draft/published/scheduled/archived)
   plus `publishAt`/`expireAt`; the public listing only returns posters that
