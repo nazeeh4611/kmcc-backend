@@ -45,11 +45,13 @@ export const eventSchema = z.object({
 export const eventUpdateSchema = eventSchema.partial();
 
 export const carouselSchema = z.object({
-  title: z.string().trim().min(2).max(200),
+  title: z.string().trim().min(2).max(120),
+  description: z.string().trim().optional(),
   button: z.string().trim().max(50).optional(),
   link: z.string().trim().url().optional().or(z.literal("")),
   priority: z.coerce.number().int().optional(),
-  isActive: z.coerce.boolean().optional(),
+  isActive: z
+    .preprocess((v) => (v === "true" ? true : v === "false" ? false : v), z.boolean().optional()),
 });
 export const carouselUpdateSchema = carouselSchema.partial();
 
